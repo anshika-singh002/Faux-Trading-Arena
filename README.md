@@ -1,1 +1,1 @@
-# Faux-Trading-Arena
+# Faux Trading-An Ai Trading Simulator
