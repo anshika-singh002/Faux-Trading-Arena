@@ -1,0 +1,11 @@
+Company,Probability_UP,Probability_DOWN,Direction,Confidence,Prediction_Horizon
+SBI,71.13%,28.87%,UP,42.25%,5 trading days
+Reliance,50.35%,49.65%,NEUTRAL,0.70%,5 trading days
+HDFC Bank,45.98%,54.02%,NEUTRAL,8.05%,5 trading days
+Aditya Birla Capital,65.02%,34.98%,UP,30.04%,5 trading days
+ICICI Bank,25.39%,74.61%,DOWN,49.22%,5 trading days
+Infosys,16.65%,83.35%,DOWN,66.71%,5 trading days
+TCS,15.29%,84.71%,DOWN,69.42%,5 trading days
+ITC,36.70%,63.30%,DOWN,26.60%,5 trading days
+Larsen & Toubro,66.69%,33.31%,UP,33.38%,5 trading days
+Bharti Airtel,43.21%,56.79%,DOWN,13.58%,5 trading days

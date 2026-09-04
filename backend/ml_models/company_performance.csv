@@ -1,0 +1,11 @@
+Company,Accuracy,Balanced_Accuracy,ROC_AUC
+SBI,81.22%,80.05%,0.887
+Reliance,82.45%,82.04%,0.890
+HDFC Bank,80.82%,80.06%,0.879
+Aditya Birla Capital,78.32%,78.06%,0.884
+ICICI Bank,80.00%,79.85%,0.874
+Infosys,81.63%,81.30%,0.892
+TCS,82.04%,82.12%,0.914
+ITC,80.24%,80.21%,0.882
+Larsen & Toubro,81.84%,81.54%,0.903
+Bharti Airtel,84.29%,83.39%,0.893
