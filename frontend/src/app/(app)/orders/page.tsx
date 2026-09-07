@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { List, X } from "lucide-react";
 import { OrderStatusBadge } from "@/components/ui/Badge";
-import { MOCK_ORDERS, formatCurrency } from "@/lib/mock-data";
+import { MOCK_ORDERS, formatCurrency, formatDate } from "@/lib/mock-data";
 import type { OrderStatus } from "@/lib/types";
 
 const STATUS_TABS: { label: string; value: "all" | OrderStatus }[] = [
@@ -133,9 +133,9 @@ export default function OrdersPage() {
                     <OrderStatusBadge status={order.status} />
                   </td>
                   <td style={{ fontSize: "0.75rem", color: "var(--color-text-3)" }}>
-                    {new Date(order.createdAt).toLocaleDateString()}
+                    {formatDate(order.createdAt)}
                     <div style={{ fontSize: "0.6875rem" }}>
-                      {new Date(order.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      {order.createdAt.slice(11, 16)} UTC
                     </div>
                   </td>
                   <td style={{ textAlign: "center" }}>

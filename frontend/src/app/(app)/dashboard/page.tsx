@@ -11,7 +11,7 @@ import { PortfolioPerformanceChart } from "@/components/charts/PortfolioChart";
 import {
   MOCK_PORTFOLIO, MOCK_INDICES, MOCK_WATCHLIST,
   MOCK_TRANSACTIONS, MOCK_AI_PORTFOLIO_INSIGHT,
-  formatCurrency, formatPercent,
+  formatCurrency, formatPercent, formatDate,
 } from "@/lib/mock-data";
 
 function SectionHeader({ title, href, label = "View all" }: { title: string; href?: string; label?: string }) {
@@ -258,7 +258,7 @@ export default function DashboardPage() {
                       {tx.side === "buy" ? "Bought" : "Sold"} {tx.symbol}
                     </div>
                     <div style={{ fontSize: "0.75rem", color: "var(--color-text-3)" }}>
-                      {tx.quantity} @ {formatCurrency(tx.price)} · {new Date(tx.createdAt).toLocaleDateString()}
+                      {tx.quantity} @ {formatCurrency(tx.price)} · {formatDate(tx.createdAt)}
                     </div>
                   </div>
                   <div style={{ textAlign: "right", flexShrink: 0 }}>

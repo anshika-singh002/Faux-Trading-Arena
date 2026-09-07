@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { ArrowUpRight, ArrowDownLeft } from "lucide-react";
-import { MOCK_TRANSACTIONS, formatCurrency } from "@/lib/mock-data";
+import { MOCK_TRANSACTIONS, formatCurrency, formatDate } from "@/lib/mock-data";
 
 export default function TransactionsPage() {
   const txs = MOCK_TRANSACTIONS;
@@ -82,9 +82,9 @@ export default function TransactionsPage() {
                   ) : <span style={{ color: "var(--color-text-3)" }}>—</span>}
                 </td>
                 <td style={{ fontSize: "0.75rem", color: "var(--color-text-3)" }}>
-                  {new Date(tx.createdAt).toLocaleDateString()}
+                  {formatDate(tx.createdAt)}
                   <div style={{ fontSize: "0.6875rem" }}>
-                    {new Date(tx.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    {tx.createdAt.slice(11, 16)} UTC
                   </div>
                 </td>
               </tr>
