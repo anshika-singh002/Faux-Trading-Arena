@@ -1,0 +1,31 @@
+{
+  "model_type": "XGBoost 3-Class Classifier (per-stock)",
+  "objective": "multi:softprob",
+  "classes": [
+    "SELL",
+    "HOLD",
+    "BUY"
+  ],
+  "label_map": {
+    "SELL": 0,
+    "HOLD": 1,
+    "BUY": 2
+  },
+  "buy_threshold": 0.015,
+  "sell_threshold": -0.015,
+  "n_features": 67,
+  "stocks": [
+    "SBI",
+    "Reliance",
+    "HDFC Bank",
+    "Aditya Birla Capital",
+    "ICICI Bank",
+    "Infosys",
+    "TCS",
+    "ITC",
+    "Larsen and Toubro",
+    "Bharti Airtel"
+  ],
+  "train_period": "2016-01-01 to 2026-01-01",
+  "model_version": "Model2_BHS_v1"
+}

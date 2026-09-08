@@ -64,3 +64,27 @@ async def test_explain_backtest():
     })
     assert isinstance(result_str, str)
     assert len(result_str) > 0
+
+
+@pytest.mark.asyncio
+async def test_xgboost_model2_prediction():
+    from app.modules.ai.ml_service import XGBoostAIService
+    service = XGBoostAIService()
+    result = await service.get_prediction("SBIN", 812.0)
+    assert result.is_mock is False
+    assert result.symbol == "SBIN"
+    assert result.status == "available"
+    assert result.direction in ("bullish", "bearish", "neutral")
+    assert 0 <= result.confidence_score <= 1.0
+    assert any("Probabilities:" in kf for kf in result.key_factors)
+    assert any("Recommendation:" in kf for kf in result.key_factors)
+
+
+@pytest.mark.asyncio
+async def test_xgboost_model2_fallback_for_unsupported_symbol():
+    from app.modules.ai.ml_service import XGBoostAIService
+    service = XGBoostAIService()
+    result = await service.get_prediction("NONEXISTENT_STOCK", 100.0)
+    assert result.is_mock is True
+    assert result.symbol == "NONEXISTENT_STOCK"
+

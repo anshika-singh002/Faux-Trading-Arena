@@ -31,11 +31,18 @@ class IndexSnapshot(BaseModel):
 
 
 MOCK_BASE_PRICES = {
+    # US Stocks & Crypto
     "AAPL": 192.53, "MSFT": 415.32, "GOOGL": 175.84, "AMZN": 198.73,
     "NVDA": 875.40, "TSLA": 248.50, "META": 523.17, "JPM": 205.83,
     "V": 278.42, "JNJ": 152.47, "SPY": 524.82, "QQQ": 457.30,
     "BTC": 64820.0, "ETH": 3412.50, "AMD": 168.73, "NFLX": 685.40,
     "WMT": 84.20, "XOM": 116.83, "DIS": 111.42, "BA": 185.60,
+    # Indian Stocks (NSE)
+    "SBIN": 812.0, "RELIANCE": 2980.0, "HDFCBANK": 1650.0,
+    "ICICIBANK": 1190.0, "INFY": 1840.0, "TCS": 4250.0,
+    "ITC": 495.0, "LT": 3620.0, "BHARTIARTL": 1540.0, "ABCAPITAL": 228.0,
+    # Indices & Benchmarks
+    "NIFTY": 24500.0, "BANKNIFTY": 51200.0, "VIX": 13.5,
 }
 
 RANGE_CONFIG = {
