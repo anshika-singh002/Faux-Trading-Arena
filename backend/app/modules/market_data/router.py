@@ -4,6 +4,7 @@ Currently returns simulated OHLCV data.
 When a real market data provider is integrated,
 replace the simulation functions with API calls.
 """
+# pyrefly: ignore [missing-import]
 from fastapi import APIRouter, Query
 from pydantic import BaseModel
 from typing import Optional
