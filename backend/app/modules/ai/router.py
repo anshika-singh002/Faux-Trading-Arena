@@ -647,3 +647,103 @@ async def live_market_news(
         articles=all_articles[:20], total=len(all_articles[:20]),
         last_updated=now_iso, is_live=False,
     )
+
+
+# ── Model 1 — Binary UP/DOWN prediction endpoint ─────────────────────────────
+
+class Model1PredictionOut(BaseModel):
+    symbol: str
+    company: str
+    current_price: float
+    predicted_price: float
+    p_up: float
+    p_down: float
+    direction: str          # "UP" | "DOWN" | "NEUTRAL"
+    confidence: float       # abs(p_up - p_down)
+    accuracy: str           # e.g. "81.22%"
+    balanced_accuracy: str
+    roc_auc: float
+    is_live: bool
+    generated_at: str
+
+
+class Model1AllOut(BaseModel):
+    predictions: list[Model1PredictionOut]
+    model_info: dict
+    generated_at: str
+
+
+@router.get("/model1/predict/{symbol}", response_model=Model1PredictionOut)
+async def model1_predict_symbol(
+    symbol: str,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Model 1 — Global XGBoost binary classifier.
+    Returns UP / DOWN / NEUTRAL direction with probabilities for a single stock.
+    """
+    from app.modules.ai.ml_service import model1_service
+    symbol = symbol.upper()
+    price  = MOCK_BASE_PRICES.get(symbol)
+    if not price:
+        raise HTTPException(status_code=404, detail=f"Symbol {symbol} not found")
+
+    result = model1_service.predict(symbol, price)
+    return Model1PredictionOut(
+        symbol=result.symbol, company=result.company,
+        current_price=result.current_price, predicted_price=result.predicted_price,
+        p_up=result.p_up, p_down=result.p_down, direction=result.direction,
+        confidence=result.confidence, accuracy=result.accuracy,
+        balanced_accuracy=result.balanced_accuracy, roc_auc=result.roc_auc,
+        is_live=result.is_live, generated_at=result.generated_at,
+    )
+
+
+@router.get("/model1/predict", response_model=Model1AllOut)
+async def model1_predict_all(
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Model 1 — Run prediction for all 10 supported Indian stocks at once.
+    """
+    from app.modules.ai.ml_service import model1_service
+    from app.modules.ai.ml_service import MODEL1_DIR
+    import json as _json
+
+    symbols = list(MOCK_BASE_PRICES.keys())
+    supported = {"SBIN","RELIANCE","HDFCBANK","ABCAPITAL","ICICIBANK","INFY","TCS","ITC","LT","BHARTIARTL"}
+    results = []
+
+    for sym in supported:
+        price = MOCK_BASE_PRICES.get(sym, 0)
+        r = model1_service.predict(sym, price)
+        results.append(Model1PredictionOut(
+            symbol=r.symbol, company=r.company,
+            current_price=r.current_price, predicted_price=r.predicted_price,
+            p_up=r.p_up, p_down=r.p_down, direction=r.direction,
+            confidence=r.confidence, accuracy=r.accuracy,
+            balanced_accuracy=r.balanced_accuracy, roc_auc=r.roc_auc,
+            is_live=r.is_live, generated_at=r.generated_at,
+        ))
+
+    # Sort by confidence descending
+    results.sort(key=lambda x: x.confidence, reverse=True)
+
+    cfg_path = MODEL1_DIR / "config.json"
+    cfg = _json.loads(cfg_path.read_text()) if cfg_path.exists() else {}
+
+    model_info = {
+        "model_type":       cfg.get("model_type", "Global XGBoost"),
+        "n_features":       cfg.get("number_of_features", 47),
+        "train_period":     f"{cfg.get('training_start','')} to {cfg.get('training_end','')}",
+        "test_accuracy":    f"{cfg.get('test_accuracy', 0)*100:.1f}%",
+        "test_auc":         round(cfg.get("test_auc", 0), 3),
+        "prediction_type":  cfg.get("prediction_type", "5-Day Stock Direction"),
+        "classes":          ["DOWN", "UP"],
+    }
+
+    return Model1AllOut(
+        predictions=results,
+        model_info=model_info,
+        generated_at=datetime.now(timezone.utc).isoformat(),
+    )

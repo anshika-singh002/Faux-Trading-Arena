@@ -277,3 +277,43 @@ export async function apiPlaceOrder(payload: PlaceOrderRequest): Promise<PlaceOr
     body: payload,
   });
 }
+
+// ── Model 1 endpoints ───────────────────────────────────────
+
+export interface Model1Prediction {
+  symbol: string;
+  company: string;
+  current_price: number;
+  predicted_price: number;
+  p_up: number;
+  p_down: number;
+  direction: "UP" | "DOWN" | "NEUTRAL";
+  confidence: number;
+  accuracy: string;
+  balanced_accuracy: string;
+  roc_auc: number;
+  is_live: boolean;
+  generated_at: string;
+}
+
+export interface Model1AllResponse {
+  predictions: Model1Prediction[];
+  model_info: {
+    model_type: string;
+    n_features: number;
+    train_period: string;
+    test_accuracy: string;
+    test_auc: number;
+    prediction_type: string;
+    classes: string[];
+  };
+  generated_at: string;
+}
+
+export async function apiModel1PredictAll(): Promise<Model1AllResponse> {
+  return apiFetch<Model1AllResponse>("/ai/model1/predict");
+}
+
+export async function apiModel1PredictSymbol(symbol: string): Promise<Model1Prediction> {
+  return apiFetch<Model1Prediction>(`/ai/model1/predict/${symbol}`);
+}

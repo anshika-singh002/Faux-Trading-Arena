@@ -523,3 +523,364 @@ class XGBoostAIService(AIService):
 
     async def explain_backtest(self, backtest_results: dict) -> str:
         return await self._fallback.explain_backtest(backtest_results)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# MODEL 1 — Global XGBoost Binary Classifier (UP / DOWN)
+# Single model for all 10 stocks, uses Company_Code as a feature.
+# 47 features: returns, moving averages, RSI, MACD, volume, benchmark data.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+MODEL1_DIR      = ML_DIR / "model1"
+MODEL1_PKL      = MODEL1_DIR / "faux_trading_global_xgboost.pkl"
+MODEL1_FEATURES = MODEL1_DIR / "features.pkl"
+MODEL1_CODES    = MODEL1_DIR / "company_codes.pkl"
+MODEL1_CONFIG   = MODEL1_DIR / "config.json"
+MODEL1_PERF_CSV = MODEL1_DIR / "company_performance.csv"
+MODEL1_PRED_CSV = MODEL1_DIR / "final_predictions.csv"
+
+
+def _load_model1() -> tuple[Any, list[str], dict[str, int], dict]:
+    """Load Model 1 artefacts: (model, feature_names, company_codes, config)."""
+    model    = joblib.load(MODEL1_PKL)
+    features = joblib.load(MODEL1_FEATURES)
+    codes    = joblib.load(MODEL1_CODES)
+    config   = json.loads(MODEL1_CONFIG.read_text())
+    return model, features, codes, config
+
+
+def compute_model1_features(
+    df_stock: pd.DataFrame,
+    df_nifty: pd.DataFrame,
+    df_bank: pd.DataFrame,
+    df_vix: pd.DataFrame,
+    company_code: int,
+    feature_names: list[str],
+) -> pd.DataFrame:
+    """
+    Compute the 47 features Model 1 expects (subset of Model 2's 67 features,
+    plus Company_Code as the first column).
+    """
+    close = df_stock["close"].astype(float)
+    open_ = df_stock["open"].astype(float)
+    high  = df_stock["high"].astype(float)
+    low   = df_stock["low"].astype(float)
+    vol   = df_stock["volume"].astype(float)
+
+    r1  = close.pct_change(1)
+    r3  = close.pct_change(3)
+    r5  = close.pct_change(5)
+    r10 = close.pct_change(10)
+    r20 = close.pct_change(20)
+    r1_l1 = r1.shift(1)
+    r1_l2 = r1.shift(2)
+    r1_l3 = r1.shift(3)
+
+    sma5  = close.rolling(5).mean()
+    sma10 = close.rolling(10).mean()
+    sma20 = close.rolling(20).mean()
+    sma50 = close.rolling(50).mean()
+
+    sma5_ratio  = close / sma5.replace(0, np.nan)
+    sma10_ratio = close / sma10.replace(0, np.nan)
+    sma20_ratio = close / sma20.replace(0, np.nan)
+    sma50_ratio = close / sma50.replace(0, np.nan)
+    sma5_sma20  = sma5  / sma20.replace(0, np.nan)
+    sma20_sma50 = sma20 / sma50.replace(0, np.nan)
+
+    # RSI 14 → centered around 0
+    delta = close.diff()
+    gain  = delta.clip(lower=0).rolling(14).mean()
+    loss  = (-delta.clip(upper=0)).rolling(14).mean()
+    rs    = gain / loss.replace(0, np.nan)
+    rsi   = 100 - (100 / (1 + rs))
+    rsi_centered = rsi - 50
+
+    # MACD
+    ema12 = close.ewm(span=12, adjust=False).mean()
+    ema26 = close.ewm(span=26, adjust=False).mean()
+    macd  = ema12 - ema26
+    signal = macd.ewm(span=9, adjust=False).mean()
+    macd_hist = macd - signal
+
+    # Volatility
+    vol5  = r1.rolling(5).std()  * np.sqrt(252)
+    vol10 = r1.rolling(10).std() * np.sqrt(252)
+    vol20 = r1.rolling(20).std() * np.sqrt(252)
+    vol_ratio = vol5 / vol20.replace(0, np.nan)
+
+    # Momentum
+    mom5  = close - close.shift(5)
+    mom10 = close - close.shift(10)
+    mom20 = close - close.shift(20)
+    mom60 = close - close.shift(60)
+
+    # Volume
+    vol_sma20     = vol.rolling(20).mean()
+    volume_ratio  = vol / vol_sma20.replace(0, np.nan)
+    volume_change = vol.pct_change(1)
+
+    # Bollinger
+    bb_mid = close.rolling(20).mean()
+    bb_std = close.rolling(20).std()
+    bb_position = (close - (bb_mid - 2 * bb_std)) / (4 * bb_std.replace(0, np.nan))
+
+    # Candle
+    candle_range = (high - low).replace(0, np.nan)
+    daily_return  = (close - open_) / open_.replace(0, np.nan)
+    daily_range   = (high - low) / close
+    close_position = (close - low) / candle_range
+
+    # Nifty
+    nc    = df_nifty["close"].astype(float)
+    nr1   = nc.pct_change(1)
+    nr5   = nc.pct_change(5)
+    nr20  = nc.pct_change(20)
+    nsma20 = nc.rolling(20).mean()
+    nsma50 = nc.rolling(50).mean()
+    ntrend20 = nc / nsma20.replace(0, np.nan)
+    ntrend50 = nc / nsma50.replace(0, np.nan)
+    nvol20   = nr1.rolling(20).std() * np.sqrt(252)
+
+    # BankNifty
+    bc    = df_bank["close"].astype(float)
+    br5   = bc.pct_change(5)
+    br20  = bc.pct_change(20)
+    bsma20 = bc.rolling(20).mean()
+    btrend20 = bc / bsma20.replace(0, np.nan)
+
+    # VIX
+    vc    = df_vix["close"].astype(float)
+    vr5   = vc.pct_change(5)
+    vsma20 = vc.rolling(20).mean()
+    vrel   = vc / vsma20.replace(0, np.nan)
+
+    # Alpha
+    alpha5  = r5  - nr5
+    alpha20 = r20 - nr20
+    market_interaction = r1 * nr1
+
+    row = {
+        "Company_Code":    float(company_code),
+        "R1":              r1.iloc[-1],
+        "R3":              r3.iloc[-1],
+        "R5":              r5.iloc[-1],
+        "R10":             r10.iloc[-1],
+        "R20":             r20.iloc[-1],
+        "R1_L1":           r1_l1.iloc[-1],
+        "R1_L2":           r1_l2.iloc[-1],
+        "R1_L3":           r1_l3.iloc[-1],
+        "SMA5_Ratio":      sma5_ratio.iloc[-1],
+        "SMA10_Ratio":     sma10_ratio.iloc[-1],
+        "SMA20_Ratio":     sma20_ratio.iloc[-1],
+        "SMA50_Ratio":     sma50_ratio.iloc[-1],
+        "SMA5_SMA20":      sma5_sma20.iloc[-1],
+        "SMA20_SMA50":     sma20_sma50.iloc[-1],
+        "RSI_Centered":    rsi_centered.iloc[-1],
+        "MACD":            macd.iloc[-1],
+        "MACD_Hist":       macd_hist.iloc[-1],
+        "Vol5":            vol5.iloc[-1],
+        "Vol10":           vol10.iloc[-1],
+        "Vol20":           vol20.iloc[-1],
+        "VolRatio":        vol_ratio.iloc[-1],
+        "Mom5":            mom5.iloc[-1],
+        "Mom10":           mom10.iloc[-1],
+        "Mom20":           mom20.iloc[-1],
+        "Mom60":           mom60.iloc[-1],
+        "Volume_Ratio":    volume_ratio.iloc[-1],
+        "Volume_Change":   volume_change.iloc[-1],
+        "BB_Position":     bb_position.iloc[-1],
+        "Daily_Return":    daily_return.iloc[-1],
+        "Daily_Range":     daily_range.iloc[-1],
+        "Close_Position":  close_position.iloc[-1],
+        "Nifty_R1":        nr1.iloc[-1],
+        "Nifty_R5":        nr5.iloc[-1],
+        "Nifty_R20":       nr20.iloc[-1],
+        "Nifty_Trend20":   ntrend20.iloc[-1],
+        "Nifty_Trend50":   ntrend50.iloc[-1],
+        "Nifty_Vol20":     nvol20.iloc[-1],
+        "Bank_R5":         br5.iloc[-1],
+        "Bank_R20":        br20.iloc[-1],
+        "Bank_Trend20":    btrend20.iloc[-1],
+        "VIX":             vc.iloc[-1],
+        "VIX_R5":          vr5.iloc[-1],
+        "VIX_Relative":    vrel.iloc[-1],
+        "Alpha5":          alpha5.iloc[-1],
+        "Alpha20":         alpha20.iloc[-1],
+        "Market_Interaction": market_interaction.iloc[-1],
+    }
+
+    df = pd.DataFrame([row])
+    # Ensure column order matches training
+    df = df.reindex(columns=feature_names, fill_value=0.0)
+    df = df.fillna(0.0)
+    return df
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+
+class Model1PredictionResult:
+    """Structured result from Model 1 inference."""
+
+    def __init__(
+        self,
+        symbol: str,
+        company: str,
+        current_price: float,
+        p_up: float,
+        p_down: float,
+        direction: str,      # "UP" | "DOWN" | "NEUTRAL"
+        confidence: float,   # abs(p_up - p_down)
+        accuracy: str,
+        balanced_accuracy: str,
+        roc_auc: float,
+        predicted_price: float,
+        is_live: bool,
+        generated_at: str,
+    ):
+        self.symbol            = symbol
+        self.company           = company
+        self.current_price     = current_price
+        self.p_up              = round(p_up, 4)
+        self.p_down            = round(p_down, 4)
+        self.direction         = direction
+        self.confidence        = round(confidence, 4)
+        self.accuracy          = accuracy
+        self.balanced_accuracy = balanced_accuracy
+        self.roc_auc           = roc_auc
+        self.predicted_price   = round(predicted_price, 2)
+        self.is_live           = is_live
+        self.generated_at      = generated_at
+
+
+class Model1Service:
+    """
+    Wraps the global XGBoost binary classifier (Model 1).
+    Uses the same synthetic candle generation as Model 2.
+    Falls back to final_predictions.csv if the pkl fails to load.
+    """
+
+    # Class-level cache so the model is loaded once at startup
+    _model    : Any            = None
+    _features : list[str]      = []
+    _codes    : dict[str, int] = {}
+    _config   : dict           = {}
+    _perf_df  : pd.DataFrame | None = None
+    _pred_df  : pd.DataFrame | None = None
+    _loaded   : bool           = False
+
+    @classmethod
+    def _load(cls) -> None:
+        if cls._loaded:
+            return
+        try:
+            cls._model, cls._features, cls._codes, cls._config = _load_model1()
+            if MODEL1_PERF_CSV.exists():
+                cls._perf_df = pd.read_csv(MODEL1_PERF_CSV)
+            if MODEL1_PRED_CSV.exists():
+                cls._pred_df = pd.read_csv(MODEL1_PRED_CSV)
+            cls._loaded = True
+            logger.info("Model 1 loaded successfully.")
+        except Exception as e:
+            logger.error(f"Failed to load Model 1: {e}")
+            cls._loaded = True  # don't retry on every call
+
+    # Map app symbols to Model 1 company names
+    _SYMBOL_TO_NAME: dict[str, str] = {
+        "SBIN": "SBI", "RELIANCE": "Reliance", "HDFCBANK": "HDFC Bank",
+        "ABCAPITAL": "Aditya Birla Capital", "ICICIBANK": "ICICI Bank",
+        "INFY": "Infosys", "TCS": "TCS", "ITC": "ITC",
+        "LT": "Larsen & Toubro", "BHARTIARTL": "Bharti Airtel",
+    }
+
+    def _perf_for(self, company: str) -> tuple[str, str, float]:
+        """Return (accuracy, balanced_accuracy, roc_auc) from performance CSV."""
+        if self._perf_df is not None:
+            row = self._perf_df[self._perf_df["Company"] == company]
+            if not row.empty:
+                r = row.iloc[0]
+                return str(r["Accuracy"]), str(r["Balanced_Accuracy"]), float(r["ROC_AUC"])
+        return "81.3%", "80.9%", 0.868
+
+    def _fallback(self, symbol: str, current_price: float) -> Model1PredictionResult:
+        """Return CSV-based prediction when live inference is unavailable."""
+        company = self._SYMBOL_TO_NAME.get(symbol, symbol)
+        acc, bal_acc, auc = self._perf_for(company)
+        p_up, p_down, direction, confidence = 0.5, 0.5, "NEUTRAL", 0.0
+
+        if self._pred_df is not None:
+            row = self._pred_df[self._pred_df["Company"] == company]
+            if not row.empty:
+                r = row.iloc[0]
+                p_up  = float(str(r["Probability_UP"]).replace("%","")) / 100
+                p_down = float(str(r["Probability_DOWN"]).replace("%","")) / 100
+                direction = str(r["Direction"])
+                confidence = abs(p_up - p_down)
+
+        predicted_price = current_price * (1 + (p_up - 0.5) * 0.05)
+        return Model1PredictionResult(
+            symbol=symbol, company=company, current_price=current_price,
+            p_up=p_up, p_down=p_down, direction=direction, confidence=confidence,
+            accuracy=acc, balanced_accuracy=bal_acc, roc_auc=auc,
+            predicted_price=predicted_price, is_live=False,
+            generated_at=datetime.now(timezone.utc).isoformat(),
+        )
+
+    def predict(self, symbol: str, current_price: float) -> Model1PredictionResult:
+        """Run Model 1 inference for a single stock."""
+        self._load()
+
+        company = self._SYMBOL_TO_NAME.get(symbol.upper(), symbol)
+        company_code = self._codes.get(company)
+        acc, bal_acc, auc = self._perf_for(company)
+
+        if self._model is None or company_code is None or not self._features:
+            return self._fallback(symbol, current_price)
+
+        try:
+            # Generate synthetic candle history (same approach as Model 2)
+            df_stock = generate_candle_series(symbol, current_price=current_price, points=252)
+            df_nifty = generate_candle_series("NIFTY",     current_price=DEFAULT_BASE_PRICES["NIFTY"],     points=252)
+            df_bank  = generate_candle_series("BANKNIFTY", current_price=DEFAULT_BASE_PRICES["BANKNIFTY"], points=252)
+            df_vix   = generate_candle_series("VIX",       current_price=DEFAULT_BASE_PRICES["VIX"],       points=252, vol=0.05)
+
+            X = compute_model1_features(
+                df_stock, df_nifty, df_bank, df_vix,
+                company_code=company_code,
+                feature_names=self._features,
+            )
+
+            proba = self._model.predict_proba(X)[0]  # [P(DOWN=0), P(UP=1)]
+            p_down = float(proba[0])
+            p_up   = float(proba[1])
+
+            cfg       = self._config
+            up_thr    = cfg.get("UP_threshold",   0.55)
+            down_thr  = cfg.get("DOWN_threshold",  0.45)
+
+            if p_up >= up_thr:
+                direction = "UP"
+            elif p_up <= down_thr:
+                direction = "DOWN"
+            else:
+                direction = "NEUTRAL"
+
+            confidence = abs(p_up - p_down)
+            move = (p_up - 0.5) * 0.08  # ±4% max swing
+            predicted_price = round(current_price * (1 + move), 2)
+
+            return Model1PredictionResult(
+                symbol=symbol, company=company, current_price=current_price,
+                p_up=p_up, p_down=p_down, direction=direction, confidence=confidence,
+                accuracy=acc, balanced_accuracy=bal_acc, roc_auc=auc,
+                predicted_price=predicted_price, is_live=True,
+                generated_at=datetime.now(timezone.utc).isoformat(),
+            )
+
+        except Exception as e:
+            logger.error(f"Model 1 inference failed for {symbol}: {e}")
+            return self._fallback(symbol, current_price)
+
+
+# Singleton — loaded once
+model1_service = Model1Service()
