@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
 from pydantic import BaseModel
 from typing import Optional
+from datetime import datetime
 
 from app.core.database import get_db
 from app.core.security import get_current_user
@@ -24,8 +25,8 @@ class OrderOut(BaseModel):
     status: str
     estimated_total: float
     estimated_fees: float
-    created_at: str
-    filled_at: Optional[str]
+    created_at: datetime
+    filled_at: Optional[datetime]
 
     class Config:
         from_attributes = True
@@ -41,7 +42,7 @@ class TransactionOut(BaseModel):
     fees: float
     total: float
     realized_pnl: Optional[float]
-    created_at: str
+    created_at: datetime
 
     class Config:
         from_attributes = True

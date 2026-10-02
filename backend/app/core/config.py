@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     ]
 
     # Virtual trading
-    INITIAL_VIRTUAL_BALANCE: float = 100_000.0
+    INITIAL_VIRTUAL_BALANCE: float = 10_000_000.0  # ₹1 crore
     TRADING_FEE_PERCENT: float = 0.001   # 0.1%
     SLIPPAGE_PERCENT: float = 0.0005     # 0.05%
 
@@ -34,6 +34,9 @@ class Settings(BaseSettings):
     AI_MODE: str = "mock"
     AI_MODEL_API_URL: str = ""
     AI_MODEL_API_KEY: str = ""
+
+    # GNews API — free tier: 100 req/day — https://gnews.io
+    GNEWS_API_KEY: str = ""
 
 
 settings = Settings()
