@@ -2,18 +2,38 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { TrendingUp, Eye, EyeOff, ArrowRight } from "lucide-react";
+import { useAuthStore } from "@/lib/auth-store";
 
 export default function LoginPage() {
-  const [showPw, setShowPw] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [email,    setEmail]    = useState("");
+  const [password, setPassword] = useState("");
+  const [showPw,   setShowPw]   = useState(false);
+  const [loading,  setLoading]  = useState(false);
+  const [error,    setError]    = useState("");
 
-  function handleSubmit(e: React.FormEvent) {
+  const { login, loginAsDemo } = useAuthStore();
+  const router = useRouter();
+
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    setError("");
+    if (!email || !password) { setError("Please enter your email and password."); return; }
+
     setLoading(true);
-    setTimeout(() => {
-      window.location.href = "/dashboard";
-    }, 800);
+    const result = await login(email, password);
+    if (result.success) {
+      router.push("/dashboard");
+    } else {
+      setError(result.error ?? "Login failed. Please try again.");
+      setLoading(false);
+    }
+  }
+
+  function handleDemo() {
+    loginAsDemo();
+    router.push("/dashboard");
   }
 
   return (
@@ -28,10 +48,7 @@ export default function LoginPage() {
       {/* Left branding strip — desktop */}
       <div style={{
         position: "fixed",
-        left: 0,
-        top: 0,
-        bottom: 0,
-        width: 320,
+        left: 0, top: 0, bottom: 0, width: 320,
         background: "var(--color-bg-elevated)",
         borderRight: "1px solid var(--color-border)",
         padding: "3rem 2rem",
@@ -47,7 +64,6 @@ export default function LoginPage() {
             Faux<span style={{ color: "var(--color-brand)" }}>.</span>
           </span>
         </Link>
-
         <div>
           <div style={{ fontSize: "1.5rem", fontWeight: 700, lineHeight: 1.3, marginBottom: "1rem" }}>
             Master markets.<br />
@@ -57,7 +73,6 @@ export default function LoginPage() {
             Practice trading with ₹84 lakh in virtual funds. Build strategies, backtest them, get AI insights.
           </p>
         </div>
-
         <div style={{ fontSize: "0.75rem", color: "var(--color-text-3)" }}>
           For educational purposes only.
         </div>
@@ -93,8 +108,11 @@ export default function LoginPage() {
               type="email"
               className="input-base"
               placeholder="you@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
               required
               autoComplete="email"
+              disabled={loading}
             />
           </div>
 
@@ -103,16 +121,18 @@ export default function LoginPage() {
               <label style={{ fontSize: "0.8125rem", fontWeight: 500, color: "var(--color-text-2)" }}>
                 Password
               </label>
-              <a href="#" style={{ fontSize: "0.8125rem", color: "var(--color-brand)" }}>Forgot?</a>
             </div>
             <div style={{ position: "relative" }}>
               <input
                 type={showPw ? "text" : "password"}
                 className="input-base"
                 placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
                 required
                 autoComplete="current-password"
                 style={{ paddingRight: 40 }}
+                disabled={loading}
               />
               <button
                 type="button"
@@ -129,64 +149,52 @@ export default function LoginPage() {
             </div>
           </div>
 
+          {error && (
+            <div role="alert" style={{
+              fontSize: "0.8125rem", color: "var(--color-negative)",
+              background: "var(--color-negative-dim)", padding: "0.5rem 0.75rem",
+              borderRadius: "var(--radius-md)", border: "1px solid var(--color-negative)",
+            }}>
+              {error}
+            </div>
+          )}
+
           <button
             type="submit"
             disabled={loading}
             style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: "0.5rem",
-              padding: "0.75rem",
-              background: "var(--color-brand)",
-              color: "var(--color-text-inv)",
-              border: "none",
-              borderRadius: "var(--radius-md)",
-              fontWeight: 700,
-              fontSize: "0.9375rem",
-              cursor: loading ? "not-allowed" : "pointer",
-              opacity: loading ? 0.7 : 1,
-              marginTop: "0.5rem",
-              transition: "all var(--transition-fast)",
-              fontFamily: "inherit",
+              display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem",
+              padding: "0.75rem", background: "var(--color-brand)", color: "var(--color-text-inv)",
+              border: "none", borderRadius: "var(--radius-md)", fontWeight: 700, fontSize: "0.9375rem",
+              cursor: loading ? "not-allowed" : "pointer", opacity: loading ? 0.7 : 1,
+              marginTop: "0.25rem", transition: "all var(--transition-fast)", fontFamily: "inherit",
             }}
           >
             {loading ? "Signing in…" : <>Sign in <ArrowRight size={16} /></>}
           </button>
         </form>
 
-        <div style={{
-          margin: "1.5rem 0",
-          display: "flex",
-          alignItems: "center",
-          gap: "0.75rem",
-        }}>
+        <div style={{ margin: "1.5rem 0", display: "flex", alignItems: "center", gap: "0.75rem" }}>
           <div style={{ flex: 1, height: 1, background: "var(--color-border)" }} />
           <span style={{ fontSize: "0.75rem", color: "var(--color-text-3)" }}>or</span>
           <div style={{ flex: 1, height: 1, background: "var(--color-border)" }} />
         </div>
 
         {/* Demo login */}
-        <Link
-          href="/dashboard"
+        <button
+          onClick={handleDemo}
           style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: "0.5rem",
-            padding: "0.75rem",
-            background: "transparent",
-            color: "var(--color-text-2)",
-            border: "1px solid var(--color-border)",
-            borderRadius: "var(--radius-md)",
-            fontWeight: 500,
-            fontSize: "0.875rem",
-            textDecoration: "none",
+            display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem",
+            padding: "0.75rem", width: "100%",
+            background: "transparent", color: "var(--color-text-2)",
+            border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)",
+            fontWeight: 500, fontSize: "0.875rem",
+            cursor: "pointer", fontFamily: "inherit",
             transition: "all var(--transition-fast)",
           }}
         >
           Continue with demo account
-        </Link>
+        </button>
 
         <p style={{ textAlign: "center", marginTop: "1.5rem", fontSize: "0.875rem", color: "var(--color-text-3)" }}>
           No account?{" "}
