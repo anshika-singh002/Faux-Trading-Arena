@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard, BarChart2, Briefcase, List,
   ArrowLeftRight, TrendingUp, FlaskConical, Cpu,
-  MessageSquare, Trophy, User, BookMarked, Settings, LogOut,
+  MessageSquare, Trophy, User, BookMarked, LogOut, Newspaper,
 } from "lucide-react";
 import { useAuthStore } from "@/lib/auth-store";
 import { formatCurrency } from "@/lib/mock-data";
@@ -31,8 +31,9 @@ const NAV_TRADING: NavItem[] = [
 ];
 
 const NAV_AI: NavItem[] = [
-  { label: "AI Insights",  href: "/insights",     icon: <Cpu size={18} /> },
-  { label: "AI Coach",     href: "/coach",        icon: <MessageSquare size={18} /> },
+  { label: "AI Insights",      href: "/insights",       icon: <Cpu size={18} /> },
+  { label: "News Analysis",    href: "/news-analysis",  icon: <Newspaper size={18} /> },
+  { label: "AI Coach",         href: "/coach",          icon: <MessageSquare size={18} /> },
 ];
 
 const NAV_COMMUNITY: NavItem[] = [
@@ -156,8 +157,7 @@ export function Sidebar() {
     : "FT";
 
   function handleSignOut() {
-    logout();
-    router.push("/login");
+    logout().then(() => router.push("/login"));
   }
 
   return (
@@ -249,78 +249,50 @@ export function Sidebar() {
       </div>
 
       {/* User Footer */}
-      <div
-        style={{
-          padding: "0.625rem 0.75rem",
-          borderTop: "1px solid var(--color-border)",
-          display: "flex",
-          alignItems: "center",
-          gap: "0.5rem",
-        }}
-      >
-        {/* Avatar */}
-        <div
-          style={{
-            width: 28, height: 28, borderRadius: "50%",
-            background: "var(--color-surface-2)",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: "0.6875rem", fontWeight: 700,
-            color: "var(--color-brand)",
-            border: "1px solid var(--color-border)",
-            flexShrink: 0,
-          }}
-        >
-          {initials}
-        </div>
-
-        {/* Name + rank */}
-        <div style={{ flex: 1, minWidth: 0 }}>
+      <div style={{ padding: "0.75rem", borderTop: "1px solid var(--color-border)" }}>
+        {/* Name row */}
+        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.625rem" }}>
           <div style={{
-            fontSize: "0.8125rem", fontWeight: 500, color: "var(--color-text)",
-            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-          }}>
-            {user?.displayName ?? "Guest"}
-          </div>
-          {user?.rank && (
-            <div style={{ fontSize: "0.6875rem", color: "var(--color-text-3)" }}>
-              Rank #{user.rank}
-            </div>
-          )}
-        </div>
-
-        {/* Settings */}
-        <Link
-          href="/profile"
-          title="Settings"
-          aria-label="Settings"
-          style={{
+            width: 28, height: 28, borderRadius: "50%", flexShrink: 0,
+            background: "var(--color-surface-2)", border: "1px solid var(--color-border)",
             display: "flex", alignItems: "center", justifyContent: "center",
-            width: 26, height: 26, borderRadius: 6,
-            color: "var(--color-text-3)",
-            transition: "color var(--transition-fast)",
-          }}
-          onMouseEnter={(e) => (e.currentTarget.style.color = "var(--color-text)")}
-          onMouseLeave={(e) => (e.currentTarget.style.color = "var(--color-text-3)")}
-        >
-          <Settings size={14} />
-        </Link>
-
-        {/* Sign out */}
+            fontSize: "0.6875rem", fontWeight: 700, color: "var(--color-brand)",
+          }}>
+            {initials}
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: "0.8125rem", fontWeight: 500, color: "var(--color-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {user?.displayName ?? "Guest"}
+            </div>
+          </div>
+        </div>
+        {/* Sign out button */}
         <button
           onClick={handleSignOut}
-          title="Sign out"
-          aria-label="Sign out"
           style={{
-            display: "flex", alignItems: "center", justifyContent: "center",
-            width: 26, height: 26, borderRadius: 6,
-            background: "none", border: "none", cursor: "pointer",
+            width: "100%",
+            display: "flex", alignItems: "center", justifyContent: "center", gap: "0.375rem",
+            padding: "0.4375rem 0",
+            background: "none",
+            border: "1px solid var(--color-border)",
+            borderRadius: "var(--radius-md)",
             color: "var(--color-text-3)",
-            transition: "color var(--transition-fast)",
+            fontSize: "0.8125rem",
+            cursor: "pointer",
+            fontFamily: "inherit",
+            transition: "all var(--transition-fast)",
           }}
-          onMouseEnter={(e) => (e.currentTarget.style.color = "var(--color-negative)")}
-          onMouseLeave={(e) => (e.currentTarget.style.color = "var(--color-text-3)")}
+          onMouseEnter={(e) => {
+            (e.currentTarget as HTMLElement).style.borderColor = "var(--color-negative)";
+            (e.currentTarget as HTMLElement).style.color = "var(--color-negative)";
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLElement).style.borderColor = "var(--color-border)";
+            (e.currentTarget as HTMLElement).style.color = "var(--color-text-3)";
+          }}
         >
-          <LogOut size={14} />
+          <LogOut size={13} />
+          Sign out
         </button>
       </div>
     </aside>

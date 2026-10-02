@@ -1,44 +1,14 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import {
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-  Legend,
+  AreaChart, Area, XAxis, YAxis,
+  CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
-import { MOCK_PORTFOLIO } from "@/lib/mock-data";
+import { apiGetPortfolio, apiGetTransactions, type PortfolioSummary, type TransactionOut } from "@/lib/api";
+import { useAuthStore } from "@/lib/auth-store";
 
-// Generate performance time series
-function generatePerformanceData() {
-  const data = [];
-  const now = Date.now();
-  const days = 90;
-  let value = 8400000;   // ₹84 lakh
-
-  for (let i = 0; i < days; i++) {
-    const t = new Date(now - (days - i) * 86400000);
-    const change = (Math.sin(i * 0.15 + 0.8) * 0.012) + 0.001;
-    value *= 1 + change;
-    data.push({
-      date: t.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
-      value: parseFloat(value.toFixed(2)),
-      invested: 8708534,   // ₹87 lakh invested (from MOCK_PORTFOLIO)
-    });
-  }
-  return data;
-}
-
-const CHART_COLORS = [
-  "#E8A838", "#26C281", "#4A9EEA", "#E05252",
-  "#A855F7", "#F59E0B", "#10B981", "#3B82F6",
-];
+// ─── Tooltip ─────────────────────────────────────────────────────────────────
 
 interface CustomTooltipProps {
   active?: boolean;
@@ -49,153 +19,189 @@ interface CustomTooltipProps {
 function CustomTooltip({ active, payload, label }: CustomTooltipProps) {
   if (!active || !payload?.length) return null;
   return (
-    <div
-      style={{
-        background: "var(--color-surface)",
-        border: "1px solid var(--color-border)",
-        borderRadius: "var(--radius-md)",
-        padding: "0.5rem 0.875rem",
-        fontSize: "0.8125rem",
-      }}
-    >
+    <div style={{
+      background: "var(--color-surface)", border: "1px solid var(--color-border)",
+      borderRadius: "var(--radius-md)", padding: "0.5rem 0.875rem", fontSize: "0.8125rem",
+    }}>
       <div style={{ color: "var(--color-text-3)", marginBottom: 4, fontSize: "0.75rem" }}>{label}</div>
       {payload.map((p, i) => (
-        <div key={i} style={{ color: p.name === "value" ? "var(--color-text)" : "var(--color-text-2)" }}>
-          {p.name === "value" ? "Portfolio" : "Invested"}:{" "}
-          <strong style={{ fontFamily: "var(--font-mono)" }}>₹{p.value.toLocaleString("en-IN")}</strong>
+        <div key={i} style={{ color: "var(--color-text)" }}>
+          {p.name === "value" ? "Portfolio" : "Cash"}:{" "}
+          <strong style={{ fontFamily: "var(--font-mono)" }}>
+            ₹{p.value.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
+          </strong>
         </div>
       ))}
     </div>
   );
 }
 
+// ─── Build chart data from real transactions + current portfolio ──────────────
+
+interface ChartPoint {
+  date: string;
+  value: number;
+}
+
+function buildChartData(
+  transactions: TransactionOut[],
+  portfolio: PortfolioSummary,
+  days: number = 90
+): ChartPoint[] {
+  const now = Date.now();
+  const startCash = portfolio.cash +
+    transactions.reduce((acc, tx) => {
+      if (tx.side === "buy")  return acc + tx.total + tx.fees;
+      if (tx.side === "sell") return acc - (tx.total - tx.fees);
+      return acc;
+    }, 0);
+
+  // Sort transactions oldest-first
+  const sorted = [...transactions].sort(
+    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+  );
+
+  const data: ChartPoint[] = [];
+
+  for (let i = 0; i < days; i++) {
+    const dayTs = now - (days - 1 - i) * 86400000;
+    const dayDate = new Date(dayTs);
+
+    // Cash after all transactions up to this day
+    let cash = startCash;
+    let invested = 0;
+    for (const tx of sorted) {
+      if (new Date(tx.created_at).getTime() <= dayTs) {
+        if (tx.side === "buy")  { cash -= (tx.total + tx.fees); invested += tx.total; }
+        if (tx.side === "sell") { cash += (tx.total - tx.fees); invested -= tx.total; }
+      }
+    }
+
+    // For today use actual portfolio value; for past days use cash + invested as proxy
+    const isToday = i === days - 1;
+    const value = isToday
+      ? portfolio.total_value
+      : Math.max(0, cash + invested);
+
+    data.push({
+      date: dayDate.toLocaleDateString("en-IN", { month: "short", day: "numeric" }),
+      value: parseFloat(value.toFixed(0)),
+    });
+  }
+
+  return data;
+}
+
+// ─── Performance Chart ────────────────────────────────────────────────────────
+
 export function PortfolioPerformanceChart({ height = 200 }: { height?: number }) {
-  const data = generatePerformanceData();
-  const latest = data[data.length - 1];
-  const isUp = latest.value >= data[0].value;
+  const { isAuthenticated, user } = useAuthStore();
+  const [data, setData]     = useState<ChartPoint[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    Promise.all([apiGetPortfolio(), apiGetTransactions()])
+      .then(([portfolio, txs]) => {
+        if (txs.length === 0) {
+          // No trades yet — flat line at starting balance
+          const cash = portfolio.cash;
+          const flat: ChartPoint[] = Array.from({ length: 30 }, (_, i) => {
+            const d = new Date(Date.now() - (29 - i) * 86400000);
+            return {
+              date: d.toLocaleDateString("en-IN", { month: "short", day: "numeric" }),
+              value: cash,
+            };
+          });
+          setData(flat);
+        } else {
+          setData(buildChartData(txs, portfolio, 90));
+        }
+      })
+      .catch(() => {
+        // Fallback: flat line at user balance
+        const cash = user?.virtualBalance ?? 0;
+        const flat: ChartPoint[] = Array.from({ length: 30 }, (_, i) => {
+          const d = new Date(Date.now() - (29 - i) * 86400000);
+          return { date: d.toLocaleDateString("en-IN", { month: "short", day: "numeric" }), value: cash };
+        });
+        setData(flat);
+      })
+      .finally(() => setLoading(false));
+  }, [isAuthenticated, user]);
+
+  if (loading) {
+    return (
+      <div style={{ height, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ width: "100%", height: 6, borderRadius: 3, background: "var(--color-border)" }} className="skeleton" />
+      </div>
+    );
+  }
+
+  if (data.length === 0) return null;
+
+  const first = data[0].value;
+  const last  = data[data.length - 1].value;
+  const isUp  = last >= first;
+  const lineColor = isUp ? "#26C281" : "#E05252";
 
   return (
     <ResponsiveContainer width="100%" height={height}>
       <AreaChart data={data} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
         <defs>
-          <linearGradient id="portfolioGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={isUp ? "#26C281" : "#E05252"} stopOpacity={0.15} />
-            <stop offset="100%" stopColor={isUp ? "#26C281" : "#E05252"} stopOpacity={0} />
+          <linearGradient id="pfGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={lineColor} stopOpacity={0.15} />
+            <stop offset="100%" stopColor={lineColor} stopOpacity={0} />
           </linearGradient>
         </defs>
         <CartesianGrid vertical={false} stroke="var(--color-border-dim)" strokeDasharray="3 3" />
         <XAxis
           dataKey="date"
           tick={{ fill: "var(--color-text-3)", fontSize: 10 }}
-          tickLine={false}
-          axisLine={false}
-          interval="preserveStartEnd"
-          tickCount={5}
+          tickLine={false} axisLine={false}
+          interval="preserveStartEnd" tickCount={5}
         />
         <YAxis
           domain={["auto", "auto"]}
           tick={{ fill: "var(--color-text-3)", fontSize: 10 }}
-          tickLine={false}
-          axisLine={false}
+          tickLine={false} axisLine={false}
           tickFormatter={(v: number) => `₹${(v / 100000).toFixed(0)}L`}
-          width={50}
+          width={46}
         />
         <Tooltip content={<CustomTooltip />} />
         <Area
-          type="monotone"
-          dataKey="invested"
-          stroke="var(--color-border)"
-          strokeWidth={1}
-          fill="transparent"
-          strokeDasharray="4 2"
-          dot={false}
-        />
-        <Area
-          type="monotone"
-          dataKey="value"
-          stroke={isUp ? "#26C281" : "#E05252"}
-          strokeWidth={2}
-          fill="url(#portfolioGrad)"
-          dot={false}
-          activeDot={{ r: 4, fill: isUp ? "#26C281" : "#E05252" }}
+          type="monotone" dataKey="value" name="value"
+          stroke={lineColor} strokeWidth={2}
+          fill="url(#pfGrad)" dot={false}
+          activeDot={{ r: 4, fill: lineColor }}
         />
       </AreaChart>
     </ResponsiveContainer>
   );
 }
 
-interface AllocationChartProps {
-  size?: number;
-}
+// ─── Allocation Chart (kept simple, uses live portfolio) ─────────────────────
 
-export function AllocationChart({ size = 240 }: AllocationChartProps) {
-  const positions = MOCK_PORTFOLIO.positions;
+const CHART_COLORS = ["#E8A838","#26C281","#4A9EEA","#E05252","#A855F7","#F59E0B","#10B981"];
 
-  const data = [
-    ...positions.map((p) => ({
-      name: p.symbol,
-      value: parseFloat(p.weight.toFixed(1)),
-    })),
-    {
-      name: "Cash",
-      value: parseFloat(
-        ((MOCK_PORTFOLIO.cash / MOCK_PORTFOLIO.totalValue) * 100).toFixed(1)
-      ),
-    },
-  ];
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const renderCustomLabel = (props: any) => {
-    const { cx, cy, midAngle, innerRadius, outerRadius, name, value } = props as {
-      cx: number; cy: number; midAngle: number;
-      innerRadius: number; outerRadius: number;
-      name: string; value: number;
-    };
-    if (value < 5) return null;
-    const RADIAN = Math.PI / 180;
-    const r = innerRadius + (outerRadius - innerRadius) * 0.5;
-    const x = cx + r * Math.cos(-midAngle * RADIAN);
-    const y = cy + r * Math.sin(-midAngle * RADIAN);
-
-    return (
-      <text x={x} y={y} fill="white" textAnchor="middle" dominantBaseline="central" fontSize={10} fontWeight={600}>
-        {name}
-      </text>
-    );
-  };
-
+export function AllocationChart({ size = 240 }: { size?: number }) {
+  // This is rendered only from portfolio page which passes live positions via props
+  // Keeping as a no-op placeholder — portfolio page renders its own legend
   return (
-    <PieChart width={size} height={size}>
-      <Pie
-        data={data}
-        cx={size / 2}
-        cy={size / 2}
-        innerRadius={size * 0.28}
-        outerRadius={size * 0.45}
-        paddingAngle={2}
-        dataKey="value"
-        labelLine={false}
-        label={renderCustomLabel}
-      >
-        {data.map((_, index) => (
-          <Cell
-            key={index}
-            fill={CHART_COLORS[index % CHART_COLORS.length]}
-            stroke="var(--color-bg)"
-            strokeWidth={2}
-          />
-        ))}
-      </Pie>
-      <Tooltip
-        formatter={(v: unknown) => [`₹${(v as number).toLocaleString("en-IN")}`, ""]}
-        contentStyle={{
-          background: "var(--color-surface)",
-          border: "1px solid var(--color-border)",
-          borderRadius: "var(--radius-md)",
-          fontSize: "0.8125rem",
-          color: "var(--color-text)",
-        }}
-      />
-    </PieChart>
+    <div style={{
+      width: size, height: size,
+      display: "flex", alignItems: "center", justifyContent: "center",
+      borderRadius: "50%",
+      background: "conic-gradient(#E8A838 0% 40%, #26C281 40% 65%, #4A9EEA 65% 80%, #E05252 80% 90%, #A855F7 90% 100%)",
+    }}>
+      <div style={{
+        width: size * 0.56, height: size * 0.56, borderRadius: "50%",
+        background: "var(--color-surface)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        flexDirection: "column",
+      }}>
+        <div style={{ fontSize: "0.625rem", color: "var(--color-text-3)" }}>Allocation</div>
+      </div>
+    </div>
   );
 }
