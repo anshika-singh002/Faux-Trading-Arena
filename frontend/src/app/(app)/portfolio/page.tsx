@@ -1,159 +1,149 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import Link from "next/link";
-import { TrendingUp, TrendingDown, DollarSign } from "lucide-react";
-import { StatCard } from "@/components/ui/StatCard";
-import { PortfolioPerformanceChart, AllocationChart } from "@/components/charts/PortfolioChart";
-import { MOCK_PORTFOLIO, formatCurrency, formatPercent } from "@/lib/mock-data";
+import { RefreshCw, TrendingUp } from "lucide-react";
+import { PortfolioPerformanceChart } from "@/components/charts/PortfolioChart";
+import { formatCurrency, formatPercent } from "@/lib/mock-data";
+import { apiGetPortfolio, type PortfolioSummary } from "@/lib/api";
+import { useAuthStore } from "@/lib/auth-store";
 
 export default function PortfolioPage() {
-  const p = MOCK_PORTFOLIO;
-  const isUp = p.dayPnl >= 0;
+  const { isAuthenticated, user } = useAuthStore();
+  const [portfolio, setPortfolio] = useState<PortfolioSummary | null>(null);
+  const [loading, setLoading]     = useState(true);
+
+  async function load() {
+    if (!isAuthenticated) return;
+    setLoading(true);
+    try { setPortfolio(await apiGetPortfolio()); }
+    catch { /* show empty state */ }
+    finally { setLoading(false); }
+  }
+  useEffect(() => { load(); }, [isAuthenticated]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const cash        = portfolio?.cash ?? user?.virtualBalance ?? 0;
+  const totalValue  = portfolio?.total_value ?? cash;
+  const totalReturn = portfolio?.total_return ?? 0;
+  const totalReturnPct = portfolio?.total_return_percent ?? 0;
+  const unrealized  = portfolio?.unrealized_pnl ?? 0;
+  const realized    = portfolio?.realized_pnl ?? 0;
+  const invested    = portfolio?.invested ?? 0;
+  const positions   = portfolio?.positions ?? [];
+
+  const Sk = ({ w = 80, h = 16 }: { w?: number | string; h?: number }) => (
+    <div style={{ width: w, height: h, borderRadius: 4, background: "var(--color-border)" }} className="skeleton" />
+  );
 
   return (
-    <div style={{ maxWidth: 1200, margin: "0 auto" }}>
-      <h1 style={{ fontSize: "1.25rem", marginBottom: "0.375rem" }}>Portfolio</h1>
-      <p style={{ fontSize: "0.8125rem", color: "var(--color-text-3)", marginBottom: "1.5rem" }}>
-        Virtual portfolio · All values in INR (₹)
-      </p>
+    <div style={{ maxWidth: 1100, margin: "0 auto" }}>
 
-      {/* Stats */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: "0.875rem", marginBottom: "1.5rem" }}>
-        <StatCard
-          label="Total Value"
-          value={<span className="tabular">{formatCurrency(p.totalValue)}</span>}
-          change={`Today: ${isUp ? "+" : ""}${formatCurrency(p.dayPnl)} (${formatPercent(p.dayPnlPercent)})`}
-          changePositive={isUp}
-        />
-        <StatCard
-          label="Total Return"
-          value={
-            <span className="tabular" style={{ color: p.totalReturn >= 0 ? "var(--color-positive)" : "var(--color-negative)" }}>
-              {p.totalReturn >= 0 ? "+" : ""}{formatCurrency(p.totalReturn)}
-            </span>
-          }
-          change={formatPercent(p.totalReturnPercent)}
-          changePositive={p.totalReturn >= 0}
-        />
-        <StatCard
-          label="Unrealized P&L"
-          value={<span className="tabular" style={{ color: "var(--color-positive)" }}>{formatCurrency(p.unrealizedPnl)}</span>}
-        />
-        <StatCard
-          label="Realized P&L"
-          value={<span className="tabular" style={{ color: "var(--color-positive)" }}>{formatCurrency(p.realizedPnl)}</span>}
-        />
-        <StatCard
-          label="Cash"
-          value={<span className="tabular">{formatCurrency(p.cash)}</span>}
-          icon={<DollarSign size={16} />}
-        />
-        <StatCard
-          label="Invested"
-          value={<span className="tabular">{formatCurrency(p.invested)}</span>}
-        />
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "2rem" }}>
+        <div>
+          <h1 style={{ fontSize: "1.5rem", fontWeight: 700, marginBottom: "0.25rem" }}>Portfolio</h1>
+          <p style={{ fontSize: "0.875rem", color: "var(--color-text-3)", margin: 0 }}>
+            Virtual portfolio · All values in ₹
+          </p>
+        </div>
+        <button onClick={load} disabled={loading} style={{ background: "none", border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", padding: "0.4375rem 0.75rem", cursor: "pointer", color: "var(--color-text-3)", display: "flex", alignItems: "center", gap: 6, fontSize: "0.8125rem", fontFamily: "inherit", opacity: loading ? 0.5 : 1 }}>
+          <RefreshCw size={13} style={{ animation: loading ? "spin 1s linear infinite" : "none" }} />
+          Refresh
+        </button>
       </div>
 
-      {/* Chart + allocation */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 300px", gap: "1.25rem", marginBottom: "1.5rem" }}>
-        <div className="surface" style={{ borderRadius: "var(--radius-lg)", padding: "1.25rem" }}>
-          <h3 style={{ fontSize: "0.875rem", marginBottom: "0.875rem" }}>Performance (90 days)</h3>
-          <PortfolioPerformanceChart height={240} />
-        </div>
-
-        <div className="surface" style={{ borderRadius: "var(--radius-lg)", padding: "1.25rem", display: "flex", flexDirection: "column", alignItems: "center" }}>
-          <h3 style={{ fontSize: "0.875rem", marginBottom: "0.875rem", alignSelf: "flex-start" }}>Allocation</h3>
-          <AllocationChart size={240} />
-          <div style={{ marginTop: "0.75rem", width: "100%" }}>
-            {[...p.positions.slice(0, 4), { symbol: "Cash", weight: (p.cash / p.totalValue) * 100 }].map((pos, i) => {
-              const colors = ["#E8A838", "#26C281", "#4A9EEA", "#E05252", "#A855F7"];
-              return (
-                <div key={pos.symbol} style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: 4 }}>
-                  <div style={{ width: 10, height: 10, borderRadius: 2, background: colors[i], flexShrink: 0 }} />
-                  <span style={{ fontSize: "0.75rem", color: "var(--color-text-3)", flex: 1 }}>{pos.symbol}</span>
-                  <span style={{ fontSize: "0.75rem", fontFamily: "var(--font-mono)", color: "var(--color-text-2)" }}>
-                    {pos.weight.toFixed(1)}%
-                  </span>
+      {/* Summary strip — single row of 4 numbers */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "1px", background: "var(--color-border)", borderRadius: "var(--radius-xl)", overflow: "hidden", marginBottom: "1.75rem" }}>
+        {[
+          { label: "Total Value",   value: totalValue,      color: "var(--color-text)",     neutral: true },
+          { label: "Total Return",  value: totalReturn,     color: totalReturn >= 0 ? "var(--color-positive)" : "var(--color-negative)", sign: true },
+          { label: "Unrealized",    value: unrealized,      color: unrealized >= 0 ? "var(--color-positive)" : "var(--color-negative)", sign: true },
+          { label: "Cash",          value: cash,            color: "var(--color-text)",     neutral: true },
+        ].map(({ label, value, color, sign }) => (
+          <div key={label} style={{ background: "var(--color-surface)", padding: "1.25rem 1.5rem" }}>
+            <div style={{ fontSize: "0.6875rem", color: "var(--color-text-3)", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "0.5rem" }}>{label}</div>
+            {loading
+              ? <Sk w="70%" h={24} />
+              : <div style={{ fontSize: "1.25rem", fontWeight: 700, fontFamily: "var(--font-mono)", color, letterSpacing: "-0.02em" }}>
+                  {sign && value > 0 ? "+" : ""}{formatCurrency(value)}
                 </div>
-              );
-            })}
+            }
+            {!loading && label === "Total Return" && (
+              <div style={{ fontSize: "0.75rem", color, marginTop: 2 }}>{formatPercent(totalReturnPct)}</div>
+            )}
           </div>
-        </div>
+        ))}
       </div>
 
-      {/* Holdings table */}
-      <div className="surface" style={{ borderRadius: "var(--radius-lg)", padding: "1.25rem" }}>
-        <h3 style={{ fontSize: "0.9375rem", fontWeight: 600, marginBottom: "1rem" }}>Holdings</h3>
-        <div style={{ overflowX: "auto" }}>
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Asset</th>
-                <th style={{ textAlign: "right" }}>Qty</th>
-                <th style={{ textAlign: "right" }}>Avg Cost</th>
-                <th style={{ textAlign: "right" }}>Current</th>
-                <th style={{ textAlign: "right" }}>Market Value</th>
-                <th style={{ textAlign: "right" }}>Day P&L</th>
-                <th style={{ textAlign: "right" }}>Total P&L</th>
-                <th style={{ textAlign: "right" }}>Alloc.</th>
-                <th style={{ textAlign: "center" }}>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {p.positions.map((pos) => (
-                <tr key={pos.symbol}>
-                  <td>
-                    <Link href={`/market/${pos.symbol}`} style={{ display: "flex", alignItems: "center", gap: "0.5rem", textDecoration: "none" }}>
-                      <div style={{ width: 30, height: 30, borderRadius: 6, background: "var(--color-surface-2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.6875rem", fontWeight: 700, color: "var(--color-brand)", flexShrink: 0 }}>
-                        {pos.symbol.slice(0, 2)}
-                      </div>
-                      <div>
-                        <div style={{ fontWeight: 600, color: "var(--color-text)", fontSize: "0.875rem" }}>{pos.symbol}</div>
-                        <div style={{ fontSize: "0.6875rem", color: "var(--color-text-3)" }}>{pos.assetName.split(" ").slice(0, 2).join(" ")}</div>
-                      </div>
-                    </Link>
-                  </td>
-                  <td style={{ textAlign: "right", fontFamily: "var(--font-mono)", fontSize: "0.875rem" }}>{pos.quantity}</td>
-                  <td style={{ textAlign: "right", fontFamily: "var(--font-mono)", fontSize: "0.875rem", color: "var(--color-text-2)" }}>{formatCurrency(pos.avgCost)}</td>
-                  <td style={{ textAlign: "right", fontFamily: "var(--font-mono)", fontSize: "0.875rem", fontWeight: 600 }}>{formatCurrency(pos.currentPrice)}</td>
-                  <td style={{ textAlign: "right", fontFamily: "var(--font-mono)", fontSize: "0.875rem", fontWeight: 500 }}>{formatCurrency(pos.marketValue)}</td>
-                  <td style={{ textAlign: "right" }}>
-                    <div style={{ fontFamily: "var(--font-mono)", fontSize: "0.8125rem", color: pos.dayPnl >= 0 ? "var(--color-positive)" : "var(--color-negative)" }}>
-                      {pos.dayPnl >= 0 ? "+" : ""}{formatCurrency(pos.dayPnl)}
-                    </div>
-                    <div style={{ fontSize: "0.6875rem", color: pos.dayPnlPercent >= 0 ? "var(--color-positive)" : "var(--color-negative)", fontFamily: "var(--font-mono)" }}>
-                      {formatPercent(pos.dayPnlPercent)}
-                    </div>
-                  </td>
-                  <td style={{ textAlign: "right" }}>
-                    <div style={{ fontFamily: "var(--font-mono)", fontSize: "0.8125rem", fontWeight: 600, color: pos.unrealizedPnl >= 0 ? "var(--color-positive)" : "var(--color-negative)" }}>
-                      {pos.unrealizedPnl >= 0 ? "+" : ""}{formatCurrency(pos.unrealizedPnl)}
-                    </div>
-                    <div style={{ fontSize: "0.6875rem", color: pos.unrealizedPnlPercent >= 0 ? "var(--color-positive)" : "var(--color-negative)", fontFamily: "var(--font-mono)" }}>
-                      {formatPercent(pos.unrealizedPnlPercent)}
-                    </div>
-                  </td>
-                  <td style={{ textAlign: "right" }}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 6 }}>
-                      <div style={{ width: 40, height: 4, borderRadius: 2, background: "var(--color-border)", overflow: "hidden" }}>
-                        <div style={{ width: `${pos.weight}%`, height: "100%", background: "var(--color-brand)", borderRadius: 2 }} />
-                      </div>
-                      <span style={{ fontSize: "0.75rem", fontFamily: "var(--font-mono)", color: "var(--color-text-3)", minWidth: 36, textAlign: "right" }}>
-                        {pos.weight.toFixed(1)}%
-                      </span>
-                    </div>
-                  </td>
-                  <td style={{ textAlign: "center" }}>
-                    <Link href={`/market/${pos.symbol}`} className="btn btn-ghost btn-sm">
-                      Trade
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      {/* Performance chart */}
+      <div style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-xl)", padding: "1.5rem", marginBottom: "1.5rem" }}>
+        <div style={{ fontSize: "0.9375rem", fontWeight: 600, marginBottom: "1.25rem" }}>Performance (90 days)</div>
+        <PortfolioPerformanceChart height={220} />
       </div>
+
+      {/* Holdings */}
+      <div style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-xl)", padding: "1.5rem" }}>
+        <div style={{ fontSize: "0.9375rem", fontWeight: 600, marginBottom: "1.25rem" }}>
+          Holdings
+          {!loading && positions.length > 0 && (
+            <span style={{ marginLeft: 8, fontSize: "0.8125rem", color: "var(--color-text-3)", fontWeight: 400 }}>{positions.length} positions</span>
+          )}
+        </div>
+
+        {!loading && positions.length === 0 ? (
+          <div style={{ textAlign: "center", padding: "3rem 2rem" }}>
+            <TrendingUp size={36} style={{ color: "var(--color-text-3)", opacity: 0.3, margin: "0 auto 1rem", display: "block" }} />
+            <p style={{ color: "var(--color-text-3)", marginBottom: "1rem" }}>No positions yet</p>
+            <Link href="/market" className="btn btn-primary btn-sm">Browse Market</Link>
+          </div>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            {/* Header row */}
+            <div style={{ display: "grid", gridTemplateColumns: "1.5fr 80px 100px 110px 110px 80px 80px", gap: "0.5rem", padding: "0 0.25rem 0.75rem", borderBottom: "1px solid var(--color-border-dim)" }}>
+              {["Stock","Qty","Avg Cost","Current","Value","P&L","Alloc."].map((h, i) => (
+                <span key={h} style={{ fontSize: "0.6875rem", color: "var(--color-text-3)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", textAlign: i > 0 ? "right" : "left" }}>{h}</span>
+              ))}
+            </div>
+
+            {loading
+              ? Array(4).fill(0).map((_, i) => (
+                <div key={i} style={{ display: "grid", gridTemplateColumns: "1.5fr 80px 100px 110px 110px 80px 80px", gap: "0.5rem", padding: "1rem 0.25rem", borderBottom: "1px solid var(--color-border-dim)", alignItems: "center" }}>
+                  {[1,2,3,4,5,6,7].map(j => <Sk key={j} w="70%" h={14} />)}
+                </div>
+              ))
+              : positions.map((pos) => (
+              <div key={pos.symbol} style={{ display: "grid", gridTemplateColumns: "1.5fr 80px 100px 110px 110px 80px 80px", gap: "0.5rem", padding: "0.875rem 0.25rem", borderBottom: "1px solid var(--color-border-dim)", alignItems: "center" }}>
+                <Link href={`/market/${pos.symbol}`} style={{ textDecoration: "none" }}>
+                  <div style={{ fontWeight: 600, fontSize: "0.9rem", color: "var(--color-text)" }}>{pos.symbol}</div>
+                  <div style={{ fontSize: "0.6875rem", color: "var(--color-text-3)" }}>NSE</div>
+                </Link>
+                <div style={{ textAlign: "right", fontFamily: "var(--font-mono)", fontSize: "0.875rem" }}>{pos.quantity}</div>
+                <div style={{ textAlign: "right", fontFamily: "var(--font-mono)", fontSize: "0.875rem", color: "var(--color-text-2)" }}>{formatCurrency(pos.avg_cost)}</div>
+                <div style={{ textAlign: "right", fontFamily: "var(--font-mono)", fontSize: "0.875rem", fontWeight: 600 }}>{formatCurrency(pos.current_price)}</div>
+                <div style={{ textAlign: "right", fontFamily: "var(--font-mono)", fontSize: "0.875rem" }}>{formatCurrency(pos.market_value)}</div>
+                <div style={{ textAlign: "right" }}>
+                  <div style={{ fontFamily: "var(--font-mono)", fontSize: "0.8125rem", fontWeight: 600, color: pos.unrealized_pnl >= 0 ? "var(--color-positive)" : "var(--color-negative)" }}>
+                    {pos.unrealized_pnl >= 0 ? "+" : ""}{formatCurrency(pos.unrealized_pnl)}
+                  </div>
+                  <div style={{ fontSize: "0.6875rem", color: pos.unrealized_pnl_percent >= 0 ? "var(--color-positive)" : "var(--color-negative)" }}>
+                    {formatPercent(pos.unrealized_pnl_percent)}
+                  </div>
+                </div>
+                <div style={{ textAlign: "right", fontFamily: "var(--font-mono)", fontSize: "0.8125rem", color: "var(--color-text-3)" }}>
+                  {pos.weight.toFixed(1)}%
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Footer note */}
+      {!loading && (
+        <p style={{ marginTop: "1rem", fontSize: "0.75rem", color: "var(--color-text-3)", textAlign: "center" }}>
+          Realized P&L: {formatCurrency(realized)} · Invested: {formatCurrency(invested)}
+        </p>
+      )}
     </div>
   );
 }

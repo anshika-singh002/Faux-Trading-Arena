@@ -1,60 +1,88 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
-import { List, X } from "lucide-react";
+import { RefreshCw, Package } from "lucide-react";
 import { OrderStatusBadge } from "@/components/ui/Badge";
-import { MOCK_ORDERS, formatCurrency, formatDate } from "@/lib/mock-data";
+import { formatCurrency } from "@/lib/mock-data";
+import { apiGetOrders, type OrderOut } from "@/lib/api";
+import { useAuthStore } from "@/lib/auth-store";
 import type { OrderStatus } from "@/lib/types";
 
-const STATUS_TABS: { label: string; value: "all" | OrderStatus }[] = [
-  { label: "All", value: "all" },
-  { label: "Open", value: "open" },
-  { label: "Filled", value: "filled" },
+const TABS: { label: string; value: "all" | OrderStatus }[] = [
+  { label: "All",       value: "all" },
+  { label: "Open",      value: "open" },
+  { label: "Filled",    value: "filled" },
   { label: "Cancelled", value: "cancelled" },
 ];
 
 export default function OrdersPage() {
-  const [statusFilter, setStatusFilter] = useState<"all" | OrderStatus>("all");
+  const { isAuthenticated } = useAuthStore();
+  const [orders, setOrders]     = useState<OrderOut[]>([]);
+  const [loading, setLoading]   = useState(true);
+  const [tab, setTab]           = useState<"all" | OrderStatus>("all");
 
-  const orders = MOCK_ORDERS.filter((o) =>
-    statusFilter === "all" || o.status === statusFilter
+  async function load() {
+    if (!isAuthenticated) return;
+    setLoading(true);
+    try { setOrders(await apiGetOrders()); }
+    catch { setOrders([]); }
+    finally { setLoading(false); }
+  }
+  useEffect(() => { load(); }, [isAuthenticated]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const filtered = tab === "all" ? orders : orders.filter(o => o.status === tab);
+  const count = (s: OrderStatus) => orders.filter(o => o.status === s).length;
+
+  const Sk = () => (
+    <tr>
+      {[140, 48, 56, 64, 80, 80, 80, 70, 80].map((w, i) => (
+        <td key={i} style={{ textAlign: i > 2 ? "right" : "left" }}>
+          <div style={{ height: 14, width: w, borderRadius: 4, background: "var(--color-border)", marginLeft: i > 2 ? "auto" : 0 }} className="skeleton" />
+        </td>
+      ))}
+    </tr>
   );
 
   return (
     <div style={{ maxWidth: 1100, margin: "0 auto" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1.5rem" }}>
+
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "2rem" }}>
         <div>
-          <h1 style={{ fontSize: "1.25rem", marginBottom: "0.25rem" }}>Orders</h1>
-          <p style={{ fontSize: "0.8125rem", color: "var(--color-text-3)" }}>
-            View and manage your virtual orders
-          </p>
+          <h1 style={{ fontSize: "1.5rem", fontWeight: 700, marginBottom: "0.25rem" }}>Orders</h1>
+          <p style={{ fontSize: "0.875rem", color: "var(--color-text-3)", margin: 0 }}>Your virtual order history</p>
         </div>
-        <Link href="/market" className="btn btn-primary btn-sm">
-          + New Order
-        </Link>
+        <div style={{ display: "flex", gap: "0.5rem" }}>
+          <button onClick={load} disabled={loading} style={{ background: "none", border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", padding: "0.4375rem 0.75rem", cursor: "pointer", color: "var(--color-text-3)", display: "flex", alignItems: "center", gap: 6, fontSize: "0.8125rem", fontFamily: "inherit", opacity: loading ? 0.5 : 1 }}>
+            <RefreshCw size={13} style={{ animation: loading ? "spin 1s linear infinite" : "none" }} />
+          </button>
+          <Link href="/market" style={{ background: "var(--color-brand)", color: "var(--color-text-inv)", padding: "0.4375rem 1rem", borderRadius: "var(--radius-md)", fontSize: "0.8125rem", fontWeight: 600, textDecoration: "none" }}>
+            + New Order
+          </Link>
+        </div>
       </div>
 
-      {/* Status tabs */}
-      <div className="tab-nav" style={{ marginBottom: "1.25rem" }}>
-        {STATUS_TABS.map(({ label, value }) => (
+      {/* Tabs */}
+      <div style={{ display: "flex", gap: 0, marginBottom: "1.5rem", borderBottom: "1px solid var(--color-border)" }}>
+        {TABS.map(({ label, value }) => (
           <button
             key={value}
-            onClick={() => setStatusFilter(value)}
-            className={`tab-item ${statusFilter === value ? "active" : ""}`}
-            style={{ background: "none", border: "none", cursor: "pointer", fontFamily: "inherit" }}
+            onClick={() => setTab(value)}
+            style={{
+              background: "none", border: "none", cursor: "pointer", fontFamily: "inherit",
+              padding: "0.5rem 1rem", fontSize: "0.875rem",
+              color: tab === value ? "var(--color-text)" : "var(--color-text-3)",
+              fontWeight: tab === value ? 600 : 400,
+              borderBottom: `2px solid ${tab === value ? "var(--color-brand)" : "transparent"}`,
+              marginBottom: -1,
+              transition: "all var(--transition-fast)",
+            }}
           >
             {label}
-            {value !== "all" && (
-              <span style={{
-                marginLeft: 6,
-                fontSize: "0.6875rem",
-                background: "var(--color-surface-2)",
-                color: "var(--color-text-3)",
-                padding: "1px 5px",
-                borderRadius: "var(--radius-full)",
-              }}>
-                {MOCK_ORDERS.filter(o => o.status === value).length}
+            {value !== "all" && !loading && count(value) > 0 && (
+              <span style={{ marginLeft: 6, fontSize: "0.6875rem", background: "var(--color-surface-2)", color: "var(--color-text-3)", padding: "1px 5px", borderRadius: 10 }}>
+                {count(value)}
               </span>
             )}
           </button>
@@ -62,104 +90,63 @@ export default function OrdersPage() {
       </div>
 
       {/* Table */}
-      <div className="surface" style={{ borderRadius: "var(--radius-lg)", overflow: "hidden" }}>
-        {orders.length === 0 ? (
+      <div style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-xl)", overflow: "hidden" }}>
+        {!loading && filtered.length === 0 ? (
           <div style={{ padding: "4rem 2rem", textAlign: "center" }}>
-            <List size={32} style={{ color: "var(--color-text-3)", margin: "0 auto 1rem" }} />
-            <p style={{ color: "var(--color-text-3)" }}>No orders found</p>
+            <Package size={36} style={{ color: "var(--color-text-3)", opacity: 0.3, margin: "0 auto 1rem", display: "block" }} />
+            <p style={{ color: "var(--color-text-3)", marginBottom: "1rem" }}>
+              {tab === "all" ? "No orders yet" : `No ${tab} orders`}
+            </p>
+            <Link href="/market" style={{ color: "var(--color-brand)", fontSize: "0.875rem" }}>Browse market →</Link>
           </div>
         ) : (
           <table className="data-table">
             <thead>
               <tr>
-                <th>Symbol</th>
+                <th>Stock</th>
                 <th>Side</th>
                 <th>Type</th>
                 <th style={{ textAlign: "right" }}>Qty</th>
-                <th style={{ textAlign: "right" }}>Price</th>
-                <th style={{ textAlign: "right" }}>Filled @ </th>
+                <th style={{ textAlign: "right" }}>Limit</th>
+                <th style={{ textAlign: "right" }}>Fill Price</th>
                 <th style={{ textAlign: "right" }}>Total</th>
                 <th>Status</th>
                 <th>Date</th>
-                <th style={{ textAlign: "center" }}>Action</th>
               </tr>
             </thead>
             <tbody>
-              {orders.map((order) => (
-                <tr key={order.id}>
+              {loading
+                ? Array(5).fill(0).map((_, i) => <Sk key={i} />)
+                : filtered.map((o) => (
+                <tr key={o.id}>
                   <td>
-                    <Link
-                      href={`/market/${order.symbol}`}
-                      style={{ fontWeight: 600, color: "var(--color-text)", textDecoration: "none" }}
-                    >
-                      {order.symbol}
+                    <Link href={`/market/${o.symbol}`} style={{ fontWeight: 600, color: "var(--color-text)", textDecoration: "none", fontSize: "0.9rem" }}>
+                      {o.symbol}
                     </Link>
-                    <div style={{ fontSize: "0.6875rem", color: "var(--color-text-3)" }}>{order.assetName.split(" ").slice(0, 2).join(" ")}</div>
                   </td>
                   <td>
                     <span style={{
-                      fontSize: "0.75rem",
-                      fontWeight: 600,
-                      padding: "2px 8px",
-                      borderRadius: 4,
-                      background: order.side === "buy" ? "var(--color-positive-dim)" : "var(--color-negative-dim)",
-                      color: order.side === "buy" ? "var(--color-positive)" : "var(--color-negative)",
-                      textTransform: "uppercase",
+                      fontSize: "0.75rem", fontWeight: 700, padding: "2px 8px", borderRadius: 4, textTransform: "uppercase",
+                      background: o.side === "buy" ? "var(--color-positive-dim)" : "var(--color-negative-dim)",
+                      color: o.side === "buy" ? "var(--color-positive)" : "var(--color-negative)",
                     }}>
-                      {order.side}
+                      {o.side}
                     </span>
                   </td>
-                  <td style={{ color: "var(--color-text-2)", textTransform: "capitalize", fontSize: "0.8125rem" }}>
-                    {order.type}
-                  </td>
-                  <td style={{ textAlign: "right", fontFamily: "var(--font-mono)", fontSize: "0.875rem" }}>
-                    {order.quantity}
-                    {order.filledQuantity < order.quantity && order.filledQuantity > 0 && (
-                      <span style={{ color: "var(--color-text-3)", fontSize: "0.6875rem" }}>
-                        {" "}({order.filledQuantity} filled)
-                      </span>
-                    )}
-                  </td>
+                  <td style={{ color: "var(--color-text-2)", fontSize: "0.8125rem", textTransform: "capitalize" }}>{o.order_type}</td>
+                  <td style={{ textAlign: "right", fontFamily: "var(--font-mono)", fontSize: "0.875rem" }}>{o.quantity}</td>
                   <td style={{ textAlign: "right", fontFamily: "var(--font-mono)", fontSize: "0.875rem", color: "var(--color-text-2)" }}>
-                    {order.price ? formatCurrency(order.price) : "MKT"}
+                    {o.price ? formatCurrency(o.price) : <span style={{ color: "var(--color-text-3)" }}>MKT</span>}
                   </td>
                   <td style={{ textAlign: "right", fontFamily: "var(--font-mono)", fontSize: "0.875rem" }}>
-                    {order.avgFillPrice ? formatCurrency(order.avgFillPrice) : "—"}
+                    {o.avg_fill_price ? formatCurrency(o.avg_fill_price) : <span style={{ color: "var(--color-text-3)" }}>—</span>}
                   </td>
                   <td style={{ textAlign: "right", fontFamily: "var(--font-mono)", fontSize: "0.875rem", fontWeight: 500 }}>
-                    {formatCurrency(order.estimatedTotal)}
+                    {formatCurrency(o.estimated_total)}
                   </td>
-                  <td>
-                    <OrderStatusBadge status={order.status} />
-                  </td>
+                  <td><OrderStatusBadge status={o.status as OrderStatus} /></td>
                   <td style={{ fontSize: "0.75rem", color: "var(--color-text-3)" }}>
-                    {formatDate(order.createdAt)}
-                    <div style={{ fontSize: "0.6875rem" }}>
-                      {order.createdAt.slice(11, 16)} UTC
-                    </div>
-                  </td>
-                  <td style={{ textAlign: "center" }}>
-                    {order.status === "open" ? (
-                      <button
-                        style={{
-                          background: "none",
-                          border: "1px solid var(--color-border)",
-                          borderRadius: 4,
-                          padding: "3px 8px",
-                          cursor: "pointer",
-                          color: "var(--color-negative)",
-                          fontSize: "0.75rem",
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 4,
-                        }}
-                        aria-label="Cancel order"
-                      >
-                        <X size={11} /> Cancel
-                      </button>
-                    ) : (
-                      <span style={{ color: "var(--color-text-3)", fontSize: "0.75rem" }}>—</span>
-                    )}
+                    {new Date(o.created_at).toLocaleDateString("en-IN")}
                   </td>
                 </tr>
               ))}
