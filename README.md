@@ -1,153 +1,64 @@
-# Faux Trading — AI-Powered Virtual Trading Simulator
+# Faux Trading Arena
 
-A production-quality trading simulator where users trade with $100,000 in virtual funds, build strategies, backtest them, and get AI-powered market insights — with zero real money at risk.
+A virtual stock trading simulator built for learning. You get ₹1 crore in fake money and can trade real Indian stocks — no real cash, no real risk.
 
----
+## What it does
 
-## Quick Start
+- **Trade Indian stocks** — buy and sell 10 NSE-listed stocks (SBIN, TCS, Infosys, Reliance, HDFC Bank, ICICI Bank, ITC, L&T, Bharti Airtel, Aditya Birla Capital)
+- **Live portfolio tracking** — your cash, positions, P&L, and transaction history update in real time after every trade
+- **AI predictions** — XGBoost models trained on 10 years of data give BUY / HOLD / SELL signals with probability scores for each stock
+- **Market news** — live financial headlines from GNews with sentiment analysis
+- **Strategy builder & backtesting** — build rule-based strategies and test them on historical data
+- **Leaderboard** — see how you rank against other traders
 
-### Prerequisites
-- Node.js 22+
-- Python 3.12+
-- Docker + Docker Compose (for full stack)
+## Getting started
 
-### Frontend only (mock data, no backend needed)
-
-```bash
-cd frontend
-npm install
-npm run dev
-# → http://localhost:3000
-```
-
-### Full stack with Docker
-
-```bash
-# Copy and configure environment
-cp backend/.env.example backend/.env
-cp frontend/.env.local.example frontend/.env.local
-
-# Start everything
-docker-compose up --build
-
-# Frontend: http://localhost:3000
-# Backend API: http://localhost:8000
-# API Docs: http://localhost:8000/docs
-```
-
-### Backend development (manual)
+### Backend
 
 ```bash
 cd backend
 python -m venv venv
 venv\Scripts\activate        # Windows
-# source venv/bin/activate   # Mac/Linux
-
 pip install -r requirements.txt
-cp .env.example .env         # Edit with your DB details
-
-uvicorn app.main:app --reload
-# → http://localhost:8000
+# Copy .env.example to .env and fill in values
+uvicorn app.main:app --reload --port 8000
 ```
 
----
+The backend uses SQLite by default — no database setup needed.
 
-## Project Structure
-
-```
-Faux Trading/
-├── frontend/              # Next.js 16 + TypeScript + Tailwind CSS
-│   └── src/
-│       ├── app/           # App Router pages
-│       │   ├── (app)/     # Authenticated app shell
-│       │   ├── (auth)/    # Login / Register
-│       │   └── page.tsx   # Landing page
-│       ├── components/    # Shared UI components
-│       │   ├── charts/    # PriceChart, PortfolioChart
-│       │   ├── layout/    # Sidebar, TopBar, AppShell
-│       │   └── ui/        # Buttons, Badges, Cards, etc.
-│       └── lib/
-│           ├── types.ts       # All TypeScript types
-│           └── mock-data.ts   # Mock data + helpers
-│
-├── backend/               # FastAPI + SQLAlchemy + PostgreSQL
-│   ├── app/
-│   │   ├── core/          # Config, DB, Security
-│   │   ├── models/        # SQLAlchemy ORM models
-│   │   └── modules/       # Domain modules (auth, trading, AI…)
-│   └── tests/             # Pytest test suite
-│
-├── docs/                  # Architecture, API, ML integration docs
-├── docker-compose.yml
-└── .gitignore
-```
-
----
-
-## Pages
-
-| Route | Description |
-|-------|-------------|
-| `/` | Landing page |
-| `/login` | Sign in |
-| `/register` | Create account |
-| `/dashboard` | Portfolio overview |
-| `/market` | Asset explorer |
-| `/market/[symbol]` | Asset detail + trading |
-| `/portfolio` | Full portfolio view |
-| `/orders` | Order management |
-| `/transactions` | Trade history |
-| `/strategies` | Strategy builder |
-| `/backtesting` | Backtesting engine |
-| `/insights` | AI market insights |
-| `/coach` | AI trading coach |
-| `/leaderboard` | Risk-adjusted rankings |
-| `/learn` | Learning modules |
-| `/profile` | User settings |
-
----
-
-## Design System
-
-Custom design tokens defined in `globals.css`. Key colors:
-
-| Token | Value | Usage |
-|-------|-------|-------|
-| `--color-brand` | `#E8A838` | Amber gold — primary brand |
-| `--color-bg` | `#0D0F14` | Deep near-black background |
-| `--color-surface` | `#1A1D27` | Cards and panels |
-| `--color-positive` | `#26C281` | Gains, bullish |
-| `--color-negative` | `#E05252` | Losses, bearish |
-| `--color-warning` | `#F0A030` | Risk alerts |
-| `--color-text` | `#F0F2F8` | Primary text |
-
----
-
-## Running Tests
+### Frontend
 
 ```bash
-# Backend tests
-cd backend
-pip install -r requirements.txt
-pytest tests/ -v
-
-# Frontend type check
 cd frontend
-npx tsc --noEmit
-
-# Frontend build check
-npm run build
+npm install
+npm run dev
 ```
 
----
+Open [http://localhost:3000](http://localhost:3000), create an account, and start trading.
 
-## Key Decisions
+## Tech stack
 
-- **Modular monolith** over microservices — scales cleanly, simpler to operate
-- **Server-side validation** for all trades — frontend is never trusted for balance/position data
-- **Mock AI service** with clean interface — ML team can plug in real models without frontend changes
-- **Tailwind v4** with CSS custom properties for the design token system
-- **Lightweight Charts v5** for the financial price chart
-- **No vibe-coded components** — every component was intentionally designed
+| Layer | What's used |
+|---|---|
+| Frontend | Next.js 16, React 19, Zustand, Tailwind |
+| Backend | FastAPI, SQLAlchemy (async), SQLite/PostgreSQL |
+| AI models | XGBoost classifiers, scikit-learn, pandas |
+| News | GNews API (add `GNEWS_API_KEY` in `.env` for live headlines) |
 
-See `docs/ARCHITECTURE.md` for full system design.
+## Environment variables
+
+Copy `backend/.env.example` to `backend/.env`:
+
+```
+SECRET_KEY=your-secret-key
+DATABASE_URL=sqlite+aiosqlite:///./faux_trading.db
+INITIAL_VIRTUAL_BALANCE=10000000.0   # ₹1 crore per user
+AI_MODE=mock                          # or "live" for external ML API
+GNEWS_API_KEY=                        # optional — adds live news with images
+```
+
+## Notes
+
+- All trades use virtual funds only. No real money is ever involved.
+- The XGBoost models were trained on historical OHLCV data from 2016–2026. Predictions are for educational purposes and not financial advice.
+- Market prices are simulated. This is a learning tool, not a real trading platform.
