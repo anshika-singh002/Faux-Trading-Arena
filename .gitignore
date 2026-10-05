@@ -45,3 +45,6 @@ Thumbs.db
 logs/
 
 backend/faux_trading.db
+
+# Generated advisor cache
+.cache/

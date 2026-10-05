@@ -23,6 +23,7 @@ from app.modules.backtesting.router import router as backtesting_router
 from app.modules.ai.router import router as ai_router
 from app.modules.leaderboard.router import router as leaderboard_router
 from app.modules.notifications.router import router as notifications_router
+from app.modules.advisor.router import router as advisor_router
 
 
 @asynccontextmanager
@@ -62,6 +63,7 @@ app.include_router(backtesting_router,   prefix="/api/v1/backtesting",   tags=["
 app.include_router(ai_router,            prefix="/api/v1/ai",            tags=["ai"])
 app.include_router(leaderboard_router,   prefix="/api/v1/leaderboard",   tags=["leaderboard"])
 app.include_router(notifications_router, prefix="/api/v1/notifications", tags=["notifications"])
+app.include_router(advisor_router,       prefix="/api/v1/advisor",       tags=["advisor"])
 
 
 @app.get("/health")

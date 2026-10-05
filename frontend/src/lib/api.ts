@@ -317,3 +317,24 @@ export async function apiModel1PredictAll(): Promise<Model1AllResponse> {
 export async function apiModel1PredictSymbol(symbol: string): Promise<Model1Prediction> {
   return apiFetch<Model1Prediction>(`/ai/model1/predict/${symbol}`);
 }
+
+// ── Advisor endpoints ───────────────────────────────────────
+
+import type { AdvisorRiskProfile, AdvisorRecommendation, AdvisorRecommendRequest } from "./types";
+
+export interface AdvisorProfilesResponse {
+  profiles: AdvisorRiskProfile[];
+}
+
+export async function apiGetAdvisorProfiles(): Promise<AdvisorProfilesResponse> {
+  return apiFetch<AdvisorProfilesResponse>("/advisor/profiles");
+}
+
+export async function apiGetAdvisorRecommendation(
+  payload: AdvisorRecommendRequest
+): Promise<AdvisorRecommendation> {
+  return apiFetch<AdvisorRecommendation>("/advisor/recommend", {
+    method: "POST",
+    body: payload,
+  });
+}
