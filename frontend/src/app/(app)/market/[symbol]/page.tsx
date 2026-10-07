@@ -10,7 +10,7 @@ import {
   MOCK_QUOTES, MOCK_AI_INSIGHT_AAPL, XGBOOST_PREDICTIONS,
   formatCurrency, formatPercent, formatVolume, formatNumber,
 } from "@/lib/mock-data";
-import { apiPlaceOrder, apiGetPortfolio } from "@/lib/api";
+import { apiPlaceOrder, apiGetPortfolio, apiModel1PredictSymbol } from "@/lib/api";
 import { useAuthStore } from "@/lib/auth-store";
 
 function KeyStatRow({ label, value }: { label: string; value: string }) {
@@ -63,8 +63,11 @@ function TradePanel({ symbol, currentPrice }: { symbol: string; currentPrice: nu
   const [liveQty, setLiveQty]       = useState<number>(0);
   const [liveAvgCost, setLiveAvgCost] = useState<number>(0);
   const [portfolioLoaded, setPortfolioLoaded] = useState(false);
+  // AI signal for this stock
+  const [aiDirection, setAiDirection] = useState<string | null>(null);
+  const [aiWarningDismissed, setAiWarningDismissed] = useState(false);
 
-  // Load live portfolio on mount
+  // Load live portfolio + AI prediction on mount
   useEffect(() => {
     apiGetPortfolio().then((p) => {
       setLiveCash(p.cash);
@@ -72,7 +75,15 @@ function TradePanel({ symbol, currentPrice }: { symbol: string; currentPrice: nu
       if (pos) { setLiveQty(pos.quantity); setLiveAvgCost(pos.avg_cost); }
       setPortfolioLoaded(true);
     }).catch(() => setPortfolioLoaded(true));
+
+    // Fetch Model 1 prediction silently
+    apiModel1PredictSymbol(symbol).then((r) => {
+      setAiDirection(r.direction); // "UP" | "DOWN" | "NEUTRAL"
+    }).catch(() => {});
   }, [symbol]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Show warning when buying a stock predicted to go DOWN
+  const showBuyWarning = side === "buy" && aiDirection === "DOWN" && !aiWarningDismissed;
 
   const quantity = parseFloat(qty) || 0;
   const price = orderType === "market" ? currentPrice : parseFloat(limitPrice) || currentPrice;
@@ -149,6 +160,24 @@ function TradePanel({ symbol, currentPrice }: { symbol: string; currentPrice: nu
     const submitting = step === "submitting";
     return (
       <div>
+        {/* AI warning on confirm — buying a bearish stock */}
+        {showBuyWarning && (
+          <div style={{
+            background: "var(--color-negative-dim)", border: "1px solid var(--color-negative)",
+            borderRadius: "var(--radius-md)", padding: "0.75rem 1rem", marginBottom: "1rem",
+            display: "flex", gap: "0.625rem",
+          }}>
+            <AlertTriangle size={15} style={{ color: "var(--color-negative)", flexShrink: 0, marginTop: 1 }} />
+            <div>
+              <div style={{ fontWeight: 700, fontSize: "0.875rem", color: "var(--color-negative)", marginBottom: 2 }}>
+                ⚠️ AI Model predicts this stock will go DOWN
+              </div>
+              <div style={{ fontSize: "0.8125rem", color: "var(--color-text-2)", lineHeight: 1.5 }}>
+                The XGBoost Model 1 has classified <strong>{symbol}</strong> as <strong>BEARISH</strong> for the next 5 trading days. You can still proceed, but consider the risk.
+              </div>
+            </div>
+          </div>
+        )}
         {/* Big action heading */}
         <div style={{
           textAlign: "center",
@@ -321,6 +350,31 @@ function TradePanel({ symbol, currentPrice }: { symbol: string; currentPrice: nu
       {!canSell && side === "sell" && quantity > 0 && (
         <div style={{ fontSize: "0.75rem", color: "var(--color-negative)", marginBottom: "0.625rem", display: "flex", gap: 5, alignItems: "center" }}>
           <AlertTriangle size={12} /> You only hold {liveQty} shares.
+        </div>
+      )}
+
+      {/* AI bearish warning — shown in form before user reviews */}
+      {showBuyWarning && (
+        <div style={{
+          background: "var(--color-negative-dim)", border: "1px solid var(--color-negative)",
+          borderRadius: "var(--radius-md)", padding: "0.75rem 0.875rem", marginBottom: "0.75rem",
+          display: "flex", gap: "0.5rem", alignItems: "flex-start",
+        }}>
+          <AlertTriangle size={14} style={{ color: "var(--color-negative)", flexShrink: 0, marginTop: 2 }} />
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 700, fontSize: "0.8125rem", color: "var(--color-negative)" }}>
+              AI signals this stock may fall
+            </div>
+            <div style={{ fontSize: "0.75rem", color: "var(--color-text-2)", marginTop: 2 }}>
+              Model 1 predicts <strong>{symbol}</strong> is <strong>BEARISH</strong> over the next 5 days. Proceed with caution.
+            </div>
+          </div>
+          <button
+            onClick={() => setAiWarningDismissed(true)}
+            style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-text-3)", fontSize: "0.75rem", flexShrink: 0, fontFamily: "inherit" }}
+          >
+            Dismiss
+          </button>
         </div>
       )}
 

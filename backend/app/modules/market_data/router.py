@@ -104,12 +104,12 @@ async def get_ohlcv(
 @router.get("/indices", response_model=list[IndexSnapshot])
 async def get_indices():
     return [
-        IndexSnapshot(name="S&P 500",      symbol="SPX",  value=5234.82, change=24.10,   change_percent=0.46),
-        IndexSnapshot(name="NASDAQ",       symbol="IXIC", value=16438.50, change=88.40,  change_percent=0.54),
-        IndexSnapshot(name="DOW",          symbol="DJI",  value=38893.20, change=-45.20, change_percent=-0.12),
-        IndexSnapshot(name="Russell 2000", symbol="RUT",  value=2089.40, change=12.30,   change_percent=0.59),
-        IndexSnapshot(name="VIX",          symbol="VIX",  value=14.82,  change=-0.54,    change_percent=-3.52),
-        IndexSnapshot(name="10Y Yield",    symbol="TNX",  value=4.218,  change=0.032,    change_percent=0.76),
+        IndexSnapshot(name="NIFTY 50",    symbol="NIFTY",     value=22603.05, change=-173.35, change_percent=-0.76),
+        IndexSnapshot(name="SENSEX",      symbol="SENSEX",    value=72638.70, change=-432.18, change_percent=-0.59),
+        IndexSnapshot(name="NIFTY Bank",  symbol="BANKNIFTY", value=55055.55, change=-72.10,  change_percent=-0.13),
+        IndexSnapshot(name="NIFTY IT",    symbol="NIFTYIT",   value=27757.80, change=-377.80, change_percent=-1.34),
+        IndexSnapshot(name="India VIX",   symbol="INDIAVIX",  value=13.90,    change=0.29,    change_percent=2.13),
+        IndexSnapshot(name="USD/INR",     symbol="USDINR",    value=96.42,    change=0.15,    change_percent=0.16),
     ]
 
 

@@ -255,12 +255,12 @@ export const MOCK_TRANSACTIONS: Transaction[] = [
 // MARKET INDICES
 // ============================================================
 export const MOCK_INDICES: MarketIndex[] = [
-  { name: "NIFTY 50",    symbol: "NIFTY",     value: 24832.45, change: 128.30,  changePercent: 0.52  },
-  { name: "SENSEX",      symbol: "SENSEX",    value: 81847.20, change: 421.10,  changePercent: 0.52  },
-  { name: "NIFTY Bank",  symbol: "BANKNIFTY", value: 53240.80, change: -182.40, changePercent: -0.34 },
-  { name: "NIFTY IT",    symbol: "NIFTYIT",   value: 38142.60, change: -240.50, changePercent: -0.63 },
-  { name: "India VIX",   symbol: "INDIAVIX",  value: 13.42,    change: -0.38,   changePercent: -2.75 },
-  { name: "USD/INR",     symbol: "USDINR",    value: 84.12,    change: 0.08,    changePercent: 0.10  },
+  { name: "NIFTY 50",    symbol: "NIFTY",     value: 22603.05, change: -173.35, changePercent: -0.76 },
+  { name: "SENSEX",      symbol: "SENSEX",    value: 72638.70, change: -432.18, changePercent: -0.59 },
+  { name: "NIFTY Bank",  symbol: "BANKNIFTY", value: 55055.55, change: -72.10,  changePercent: -0.13 },
+  { name: "NIFTY IT",    symbol: "NIFTYIT",   value: 27757.80, change: -377.80, changePercent: -1.34 },
+  { name: "India VIX",   symbol: "INDIAVIX",  value: 13.90,    change: 0.29,    changePercent: 2.13  },
+  { name: "USD/INR",     symbol: "USDINR",    value: 96.42,    change: 0.15,    changePercent: 0.16  },
 ];
 
 // ============================================================
