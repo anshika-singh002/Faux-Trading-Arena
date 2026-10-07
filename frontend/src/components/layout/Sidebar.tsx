@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard, BarChart2, Briefcase, List,
   ArrowLeftRight, TrendingUp, FlaskConical, Cpu,
-  MessageSquare, Trophy, User, BookMarked, LogOut, Newspaper,
+  MessageSquare, Trophy, User, BookMarked, LogOut, Newspaper, Compass,
 } from "lucide-react";
 import { useAuthStore } from "@/lib/auth-store";
 import { formatCurrency } from "@/lib/mock-data";
@@ -31,6 +31,7 @@ const NAV_TRADING: NavItem[] = [
 ];
 
 const NAV_AI: NavItem[] = [
+  { label: "Advisor",          href: "/advisor",        icon: <Compass size={18} /> },
   { label: "AI Insights",      href: "/insights",       icon: <Cpu size={18} /> },
   { label: "News Analysis",    href: "/news-analysis",  icon: <Newspaper size={18} /> },
   { label: "AI Coach",         href: "/coach",          icon: <MessageSquare size={18} /> },

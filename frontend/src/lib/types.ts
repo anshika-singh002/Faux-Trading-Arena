@@ -389,3 +389,69 @@ export interface Notification {
   relatedSymbol?: string;
   relatedOrderId?: string;
 }
+
+// ============================================================
+// VIRTUAL INVESTMENT ADVISOR
+// ============================================================
+
+export type AdvisorRiskProfileKey = "conservative" | "balanced" | "aggressive";
+
+export interface AdvisorRiskProfile {
+  id: AdvisorRiskProfileKey;
+  label: string;
+  goal: string;
+  risk_aversion: number;
+  max_weight_pct: number;
+  max_sector_pct: number;
+  max_stock_vol_pct: number | null;
+  objective: string;
+}
+
+export interface AdvisorAllocation {
+  ticker: string;
+  symbol: string;
+  name: string;
+  sector: string;
+  weight_pct: number;
+  amount: number;
+  last_price: number;
+  shares: number;
+  expected_return_pct: number;
+  volatility_pct: number;
+  risk_level: "Low" | "Medium" | "High";
+}
+
+export interface AdvisorPortfolioStats {
+  expected_return_pct: number;
+  volatility_pct: number;
+  risk_level: "Low" | "Medium" | "High";
+  sharpe: number;
+  effective_holdings: number;
+  avg_pairwise_correlation: number;
+  diversification: "Poor" | "Fair" | "Good" | "Excellent";
+  sector_weights_pct: Record<string, number>;
+}
+
+export interface AdvisorDataProvenance {
+  source: string;
+  start: string;
+  end: string;
+  trading_days: number;
+}
+
+export interface AdvisorRecommendation {
+  amount: number;
+  risk_profile: AdvisorRiskProfileKey;
+  goal: string;
+  allocations: AdvisorAllocation[];
+  uninvested_cash: number;
+  portfolio: AdvisorPortfolioStats;
+  warnings: string[];
+  data: AdvisorDataProvenance;
+  disclaimer: string;
+}
+
+export interface AdvisorRecommendRequest {
+  amount: number;
+  risk: AdvisorRiskProfileKey;
+}
