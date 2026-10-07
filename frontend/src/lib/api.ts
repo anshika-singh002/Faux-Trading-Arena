@@ -338,3 +338,58 @@ export async function apiGetAdvisorRecommendation(
     body: payload,
   });
 }
+
+// ── Portfolio risk endpoint ─────────────────────────────────
+
+export interface RiskyPosition {
+  symbol: string;
+  risk_level: "high" | "medium" | "low";
+  risk_reason: string;
+  weight: number;
+  unrealized_pnl_percent: number;
+  current_price: number;
+}
+
+export interface RiskSummary {
+  has_risk: boolean;
+  overall_risk: "high" | "medium" | "low";
+  risky_positions: RiskyPosition[];
+  warnings: string[];
+  sector_concentration: Record<string, number>;
+}
+
+export async function apiGetPortfolioRisk(): Promise<RiskSummary> {
+  return apiFetch<RiskSummary>("/portfolio/risk");
+}
+
+// ── Notifications endpoint ──────────────────────────────────
+
+export interface NotificationOut {
+  id: string;
+  notification_type: string;
+  title: string;
+  message: string;
+  is_read: boolean;
+  related_symbol: string | null;
+  created_at: string;
+}
+
+export async function apiGetNotifications(): Promise<NotificationOut[]> {
+  return apiFetch<NotificationOut[]>("/notifications/");
+}
+
+export async function apiMarkNotificationRead(id: string): Promise<void> {
+  await apiFetch(`/notifications/${id}/read`, { method: "POST" });
+}
+
+export async function apiMarkAllNotificationsRead(): Promise<void> {
+  await apiFetch("/notifications/read-all", { method: "POST" });
+}
+
+// Create advisor notification
+export async function apiCreateAdvisorNotification(payload: {
+  amount: number;
+  risk: string;
+}): Promise<{ message: string; notification_id: string }> {
+  return apiFetch("/advisor/notify", { method: "POST", body: payload });
+}

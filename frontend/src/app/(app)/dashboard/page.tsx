@@ -2,22 +2,26 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { TrendingUp, TrendingDown, ArrowRight } from "lucide-react";
+import { TrendingUp, TrendingDown, ArrowRight, AlertTriangle, ShieldAlert, Shield } from "lucide-react";
 import { PortfolioPerformanceChart } from "@/components/charts/PortfolioChart";
 import { MOCK_INDICES, formatCurrency, formatPercent } from "@/lib/mock-data";
-import { apiGetPortfolio, apiGetTransactions, type PortfolioSummary, type TransactionOut } from "@/lib/api";
+import {
+  apiGetPortfolio, apiGetTransactions, apiGetPortfolioRisk,
+  type PortfolioSummary, type TransactionOut, type RiskSummary,
+} from "@/lib/api";
 import { useAuthStore } from "@/lib/auth-store";
 
 export default function DashboardPage() {
   const { isAuthenticated, user } = useAuthStore();
-  const [portfolio, setPortfolio]     = useState<PortfolioSummary | null>(null);
+  const [portfolio, setPortfolio]       = useState<PortfolioSummary | null>(null);
   const [transactions, setTransactions] = useState<TransactionOut[]>([]);
-  const [loading, setLoading]         = useState(true);
+  const [risk, setRisk]                 = useState<RiskSummary | null>(null);
+  const [loading, setLoading]           = useState(true);
 
   useEffect(() => {
     if (!isAuthenticated) return;
-    Promise.all([apiGetPortfolio(), apiGetTransactions()])
-      .then(([p, txs]) => { setPortfolio(p); setTransactions(txs); })
+    Promise.all([apiGetPortfolio(), apiGetTransactions(), apiGetPortfolioRisk()])
+      .then(([p, txs, r]) => { setPortfolio(p); setTransactions(txs); setRisk(r); })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [isAuthenticated]);
@@ -200,12 +204,88 @@ export default function DashboardPage() {
               ))
             )}
           </div>
+
+          {/* ── Risky Stocks Alert ── */}
+          {!loading && risk && risk.has_risk && positions.length > 0 && (
+            <div style={{
+              background: "var(--color-surface)", border: `1px solid ${risk.overall_risk === "high" ? "var(--color-negative)" : "var(--color-warning)"}`,
+              borderLeft: `4px solid ${risk.overall_risk === "high" ? "var(--color-negative)" : "var(--color-warning)"}`,
+              borderRadius: "var(--radius-xl)", padding: "1.25rem",
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.625rem", marginBottom: "1rem" }}>
+                {risk.overall_risk === "high"
+                  ? <ShieldAlert size={17} style={{ color: "var(--color-negative)" }} />
+                  : <AlertTriangle size={17} style={{ color: "var(--color-warning)" }} />
+                }
+                <span style={{ fontWeight: 600, fontSize: "0.9375rem" }}>Portfolio Risk Alert</span>
+                <span style={{
+                  marginLeft: "auto", fontSize: "0.6875rem", fontWeight: 700,
+                  padding: "2px 8px", borderRadius: "var(--radius-full)",
+                  background: risk.overall_risk === "high" ? "var(--color-negative-dim)" : "var(--color-warning-dim)",
+                  color: risk.overall_risk === "high" ? "var(--color-negative)" : "var(--color-warning)",
+                  textTransform: "uppercase",
+                }}>
+                  {risk.overall_risk} risk
+                </span>
+              </div>
+
+              {risk.risky_positions.map((rp) => (
+                <div key={rp.symbol} style={{ display: "flex", alignItems: "flex-start", gap: "0.75rem", padding: "0.625rem 0", borderBottom: "1px solid var(--color-border-dim)" }}>
+                  <div style={{
+                    width: 32, height: 32, borderRadius: 8, flexShrink: 0,
+                    background: rp.risk_level === "high" ? "var(--color-negative-dim)" : "var(--color-warning-dim)",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    fontSize: "0.625rem", fontWeight: 800,
+                    color: rp.risk_level === "high" ? "var(--color-negative)" : "var(--color-warning)",
+                  }}>
+                    {rp.symbol.slice(0, 2)}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                      <span style={{ fontWeight: 600, fontSize: "0.875rem", color: "var(--color-text)" }}>{rp.symbol}</span>
+                      <span style={{ fontSize: "0.6875rem", color: "var(--color-text-3)" }}>{rp.weight}% of portfolio</span>
+                    </div>
+                    <div style={{ fontSize: "0.75rem", color: rp.risk_level === "high" ? "var(--color-negative)" : "var(--color-warning)", marginTop: 2 }}>
+                      {rp.risk_reason}
+                    </div>
+                  </div>
+                  <div style={{ textAlign: "right", flexShrink: 0 }}>
+                    <div style={{ fontFamily: "var(--font-mono)", fontSize: "0.8125rem", fontWeight: 600, color: rp.unrealized_pnl_percent >= 0 ? "var(--color-positive)" : "var(--color-negative)" }}>
+                      {rp.unrealized_pnl_percent >= 0 ? "+" : ""}{rp.unrealized_pnl_percent.toFixed(1)}%
+                    </div>
+                  </div>
+                </div>
+              ))}
+
+              {risk.warnings.length > 0 && (
+                <div style={{ marginTop: "0.75rem" }}>
+                  {risk.warnings.map((w, i) => (
+                    <div key={i} style={{ fontSize: "0.75rem", color: "var(--color-text-2)", display: "flex", gap: 6, marginBottom: 4 }}>
+                      <AlertTriangle size={12} style={{ color: "var(--color-warning)", flexShrink: 0, marginTop: 1 }} /> {w}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <Link href="/portfolio" style={{ display: "inline-flex", alignItems: "center", gap: 4, marginTop: "0.75rem", fontSize: "0.8125rem", color: "var(--color-brand)", textDecoration: "none" }}>
+                Review portfolio <ArrowRight size={12} />
+              </Link>
+            </div>
+          )}
+
+          {!loading && risk && !risk.has_risk && positions.length > 0 && (
+            <div style={{ background: "var(--color-surface)", border: "1px solid var(--color-positive-dim)", borderLeft: "4px solid var(--color-positive)", borderRadius: "var(--radius-xl)", padding: "1rem 1.25rem", display: "flex", alignItems: "center", gap: "0.75rem" }}>
+              <Shield size={16} style={{ color: "var(--color-positive)", flexShrink: 0 }} />
+              <div>
+                <div style={{ fontWeight: 600, fontSize: "0.875rem", color: "var(--color-positive)" }}>Portfolio looks healthy</div>
+                <div style={{ fontSize: "0.75rem", color: "var(--color-text-3)" }}>No high-risk positions or concentration issues detected.</div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Right column */}
         <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
-
-          {/* Market indices */}
           <div style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-xl)", padding: "1.5rem" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1.25rem" }}>
               <span style={{ fontSize: "0.9375rem", fontWeight: 600 }}>Indices</span>
