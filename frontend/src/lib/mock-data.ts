@@ -30,17 +30,17 @@ export const MOCK_ASSETS: Asset[] = [
 // QUOTES — prices in INR
 // ============================================================
 export const MOCK_QUOTES: Record<string, Quote> = {
-  // ── Indian Stocks (NSE, prices in INR) ─────────────────────
-  SBIN:       { symbol: "SBIN",       price: 812,    open: 808,   high: 819,   low: 805,   previousClose: 807,   change: 5,     changePercent: 0.62,  volume: 42000000,  avgVolume: 45000000,  marketCap: 7248000000000,  pe: 9.2,  eps: 88,   week52High: 912, week52Low: 601, timestamp: new Date().toISOString() },
-  RELIANCE:   { symbol: "RELIANCE",   price: 2945,   open: 2930,  high: 2962,  low: 2921,  previousClose: 2940,  change: 5,     changePercent: 0.17,  volume: 8200000,   avgVolume: 9000000,   marketCap: 19920000000000, pe: 24.1, eps: 122,  week52High: 3218, week52Low: 2220, timestamp: new Date().toISOString() },
-  HDFCBANK:   { symbol: "HDFCBANK",   price: 1742,   open: 1735,  high: 1758,  low: 1730,  previousClose: 1748,  change: -6,    changePercent: -0.34, volume: 14800000,  avgVolume: 16000000,  marketCap: 13240000000000, pe: 18.3, eps: 95,   week52High: 1880, week52Low: 1363, timestamp: new Date().toISOString() },
-  ABCAPITAL:  { symbol: "ABCAPITAL",  price: 189,    open: 187,   high: 192,   low: 186,   previousClose: 188,   change: 1,     changePercent: 0.53,  volume: 5400000,   avgVolume: 6000000,   marketCap: 490000000000,   pe: 14.8, eps: 12.8, week52High: 248, week52Low: 156, timestamp: new Date().toISOString() },
-  ICICIBANK:  { symbol: "ICICIBANK",  price: 1284,   open: 1295,  high: 1298,  low: 1278,  previousClose: 1291,  change: -7,    changePercent: -0.54, volume: 18600000,  avgVolume: 20000000,  marketCap: 9030000000000,  pe: 17.2, eps: 74.6, week52High: 1370, week52Low: 945, timestamp: new Date().toISOString() },
-  INFY:       { symbol: "INFY",       price: 1612,   open: 1598,  high: 1624,  low: 1594,  previousClose: 1605,  change: 7,     changePercent: 0.44,  volume: 11200000,  avgVolume: 12500000,  marketCap: 6720000000000,  pe: 22.6, eps: 71.3, week52High: 1975, week52Low: 1351, timestamp: new Date().toISOString() },
-  TCS:        { symbol: "TCS",        price: 3487,   open: 3510,  high: 3521,  low: 3479,  previousClose: 3512,  change: -25,   changePercent: -0.71, volume: 2800000,   avgVolume: 3200000,   marketCap: 12680000000000, pe: 28.4, eps: 122.8, week52High: 4592, week52Low: 3057, timestamp: new Date().toISOString() },
-  ITC:        { symbol: "ITC",        price: 428,    open: 432,   high: 434,   low: 426,   previousClose: 431,   change: -3,    changePercent: -0.70, volume: 22000000,  avgVolume: 24000000,  marketCap: 5352000000000,  pe: 26.1, eps: 16.4, week52High: 528, week52Low: 401, timestamp: new Date().toISOString() },
-  LT:         { symbol: "LT",         price: 3621,   open: 3605,  high: 3648,  low: 3598,  previousClose: 3609,  change: 12,    changePercent: 0.33,  volume: 2100000,   avgVolume: 2400000,   marketCap: 4980000000000,  pe: 31.5, eps: 115,  week52High: 3963, week52Low: 2816, timestamp: new Date().toISOString() },
-  BHARTIARTL: { symbol: "BHARTIARTL", price: 1876,   open: 1862,  high: 1884,  low: 1858,  previousClose: 1868,  change: 8,     changePercent: 0.43,  volume: 5600000,   avgVolume: 6200000,   marketCap: 11208000000000, pe: 58.2, eps: 32.2, week52High: 1908, week52Low: 1207, timestamp: new Date().toISOString() },
+  // ── Indian Stocks (NSE) — real prices Oct 2026 ─────────────
+  SBIN:       { symbol: "SBIN",       price: 952.65,  open: 958,    high: 963,    low: 948,    previousClose: 958.75,  change: -6.10,  changePercent: -0.64, volume: 38000000,  avgVolume: 42000000,  marketCap: 8501000000000,  pe: 10.8, eps: 88.2,  week52High: 1080, week52Low: 700,  timestamp: new Date().toISOString() },
+  RELIANCE:   { symbol: "RELIANCE",   price: 1208.60, open: 1218,   high: 1222,   low: 1205,   previousClose: 1218.00, change: -9.40,  changePercent: -0.77, volume: 12000000,  avgVolume: 14000000,  marketCap: 16320000000000, pe: 22.4, eps: 53.9,  week52High: 1550, week52Low: 1100, timestamp: new Date().toISOString() },
+  HDFCBANK:   { symbol: "HDFCBANK",   price: 704.50,  open: 711,    high: 714,    low: 702,    previousClose: 711.45,  change: -6.95,  changePercent: -0.98, volume: 22000000,  avgVolume: 24000000,  marketCap: 5360000000000,  pe: 17.2, eps: 41.0,  week52High: 800,  week52Low: 600,  timestamp: new Date().toISOString() },
+  ABCAPITAL:  { symbol: "ABCAPITAL",  price: 373.00,  open: 379,    high: 381,    low: 371,    previousClose: 378.90,  change: -5.90,  changePercent: -1.56, volume: 4800000,   avgVolume: 5500000,   marketCap: 968000000000,   pe: 16.2, eps: 23.0,  week52High: 450,  week52Low: 280,  timestamp: new Date().toISOString() },
+  ICICIBANK:  { symbol: "ICICIBANK",  price: 1357.00, open: 1343,   high: 1362,   low: 1340,   previousClose: 1342.70, change: 14.30,  changePercent: 1.06,  volume: 16000000,  avgVolume: 18000000,  marketCap: 9550000000000,  pe: 18.1, eps: 75.0,  week52High: 1450, week52Low: 950,  timestamp: new Date().toISOString() },
+  INFY:       { symbol: "INFY",       price: 1004.70, open: 1014,   high: 1018,   low: 1001,   previousClose: 1013.80, change: -9.10,  changePercent: -0.90, volume: 10000000,  avgVolume: 12000000,  marketCap: 4178000000000,  pe: 21.5, eps: 46.7,  week52High: 1250, week52Low: 850,  timestamp: new Date().toISOString() },
+  TCS:        { symbol: "TCS",        price: 2083.50, open: 2100,   high: 2106,   low: 2078,   previousClose: 2100.10, change: -16.60, changePercent: -0.79, volume: 3200000,   avgVolume: 3800000,   marketCap: 7540000000000,  pe: 24.6, eps: 84.7,  week52High: 2500, week52Low: 1800, timestamp: new Date().toISOString() },
+  ITC:        { symbol: "ITC",        price: 266.10,  open: 268,    high: 269,    low: 265,    previousClose: 267.70,  change: -1.60,  changePercent: -0.22, volume: 20000000,  avgVolume: 22000000,  marketCap: 3325000000000,  pe: 27.3, eps: 9.7,   week52High: 340,  week52Low: 235,  timestamp: new Date().toISOString() },
+  LT:         { symbol: "LT",         price: 3731.60, open: 3770,   high: 3778,   low: 3725,   previousClose: 3769.90, change: -38.30, changePercent: -1.02, volume: 1800000,   avgVolume: 2200000,   marketCap: 5130000000000,  pe: 32.4, eps: 115.2, week52High: 4200, week52Low: 3100, timestamp: new Date().toISOString() },
+  BHARTIARTL: { symbol: "BHARTIARTL", price: 1825.70, open: 1810,   high: 1832,   low: 1806,   previousClose: 1810.40, change: 15.30,  changePercent: 0.84,  volume: 6000000,   avgVolume: 7000000,   marketCap: 10900000000000, pe: 55.8, eps: 32.7,  week52High: 1900, week52Low: 1100, timestamp: new Date().toISOString() },
 };
 
 // ============================================================
@@ -267,31 +267,31 @@ export const MOCK_INDICES: MarketIndex[] = [
 // MARKET MOVERS
 // ============================================================
 export const MOCK_GAINERS: MarketMover[] = [
-  { symbol: "SBIN",       name: "State Bank of India",       price: 812,  change: 5,  changePercent: 0.62, volume: 42000000 },
-  { symbol: "ABCAPITAL",  name: "Aditya Birla Capital",      price: 189,  change: 1,  changePercent: 0.53, volume: 5400000  },
-  { symbol: "LT",         name: "Larsen & Toubro",           price: 3621, change: 12, changePercent: 0.33, volume: 2100000  },
-  { symbol: "BHARTIARTL", name: "Bharti Airtel",             price: 1876, change: 8,  changePercent: 0.43, volume: 5600000  },
-  { symbol: "INFY",       name: "Infosys Ltd.",              price: 1612, change: 7,  changePercent: 0.44, volume: 11200000 },
+  { symbol: "ICICIBANK",  name: "ICICI Bank",           price: 1357.00, change: 14.30,  changePercent: 1.06, volume: 16000000 },
+  { symbol: "BHARTIARTL", name: "Bharti Airtel",         price: 1825.70, change: 15.30,  changePercent: 0.84, volume: 6000000  },
+  { symbol: "SBIN",       name: "State Bank of India",   price: 952.65,  change: -6.10,  changePercent: -0.64, volume: 38000000 },
+  { symbol: "ABCAPITAL",  name: "Aditya Birla Capital",  price: 373.00,  change: -5.90,  changePercent: -1.56, volume: 4800000  },
+  { symbol: "LT",         name: "Larsen & Toubro",       price: 3731.60, change: -38.30, changePercent: -1.02, volume: 1800000  },
 ];
 
 export const MOCK_LOSERS: MarketMover[] = [
-  { symbol: "TCS",      name: "Tata Consultancy Services", price: 3487, change: -25, changePercent: -0.71, volume: 2800000  },
-  { symbol: "ITC",      name: "ITC Ltd.",                  price: 428,  change: -3,  changePercent: -0.70, volume: 22000000 },
-  { symbol: "ICICIBANK",name: "ICICI Bank",                price: 1284, change: -7,  changePercent: -0.54, volume: 18600000 },
-  { symbol: "HDFCBANK", name: "HDFC Bank",                 price: 1742, change: -6,  changePercent: -0.34, volume: 14800000 },
-  { symbol: "RELIANCE", name: "Reliance Industries",       price: 2945, change: 5,   changePercent: 0.17,  volume: 8200000  },
+  { symbol: "ABCAPITAL",  name: "Aditya Birla Capital",      price: 373.00,  change: -5.90,  changePercent: -1.56, volume: 4800000  },
+  { symbol: "LT",         name: "Larsen & Toubro",           price: 3731.60, change: -38.30, changePercent: -1.02, volume: 1800000  },
+  { symbol: "HDFCBANK",   name: "HDFC Bank",                 price: 704.50,  change: -6.95,  changePercent: -0.98, volume: 22000000 },
+  { symbol: "INFY",       name: "Infosys",                   price: 1004.70, change: -9.10,  changePercent: -0.90, volume: 10000000 },
+  { symbol: "TCS",        name: "Tata Consultancy Services", price: 2083.50, change: -16.60, changePercent: -0.79, volume: 3200000  },
 ];
 
 // ============================================================
 // WATCHLIST
 // ============================================================
 export const MOCK_WATCHLIST: WatchlistItem[] = [
-  { symbol: "SBIN",       name: "State Bank of India",       price: 812,  change: 5,   changePercent: 0.62,  addedAt: "2026-08-01T00:00:00Z" },
-  { symbol: "TCS",        name: "Tata Consultancy Services", price: 3487, change: -25, changePercent: -0.71, addedAt: "2026-08-05T00:00:00Z" },
-  { symbol: "RELIANCE",   name: "Reliance Industries",       price: 2945, change: 5,   changePercent: 0.17,  addedAt: "2026-08-10T00:00:00Z" },
-  { symbol: "INFY",       name: "Infosys Ltd.",              price: 1612, change: 7,   changePercent: 0.44,  addedAt: "2026-08-12T00:00:00Z" },
-  { symbol: "HDFCBANK",   name: "HDFC Bank",                 price: 1742, change: -6,  changePercent: -0.34, addedAt: "2026-08-15T00:00:00Z" },
-  { symbol: "LT",         name: "Larsen & Toubro",           price: 3621, change: 12,  changePercent: 0.33,  addedAt: "2026-08-18T00:00:00Z" },
+  { symbol: "SBIN",       name: "State Bank of India",       price: 952.65,  change: -6.10,  changePercent: -0.64, addedAt: "2026-08-01T00:00:00Z" },
+  { symbol: "TCS",        name: "Tata Consultancy Services", price: 2083.50, change: -16.60, changePercent: -0.79, addedAt: "2026-08-05T00:00:00Z" },
+  { symbol: "RELIANCE",   name: "Reliance Industries",       price: 1208.60, change: -9.40,  changePercent: -0.77, addedAt: "2026-08-10T00:00:00Z" },
+  { symbol: "INFY",       name: "Infosys Ltd.",              price: 1004.70, change: -9.10,  changePercent: -0.90, addedAt: "2026-08-12T00:00:00Z" },
+  { symbol: "HDFCBANK",   name: "HDFC Bank",                 price: 704.50,  change: -6.95,  changePercent: -0.98, addedAt: "2026-08-15T00:00:00Z" },
+  { symbol: "LT",         name: "Larsen & Toubro",           price: 3731.60, change: -38.30, changePercent: -1.02, addedAt: "2026-08-18T00:00:00Z" },
 ];
 
 // ============================================================

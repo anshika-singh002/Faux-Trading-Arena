@@ -67,11 +67,11 @@ SYMBOL_TO_MODEL2_PKL: dict[str, str] = {
 
 SUPPORTED_SYMBOLS = set(SYMBOL_TO_COMPANY.keys())
 
-# Default base prices for simulation
+# Default base prices for simulation — real NSE prices Oct 2026
 DEFAULT_BASE_PRICES = {
-    "SBIN": 812.0, "RELIANCE": 2980.0, "HDFCBANK": 1650.0,
-    "ICICIBANK": 1190.0, "INFY": 1840.0, "TCS": 4250.0,
-    "ITC": 495.0, "LT": 3620.0, "BHARTIARTL": 1540.0, "ABCAPITAL": 228.0,
+    "SBIN": 952.65, "RELIANCE": 1208.60, "HDFCBANK": 704.50,
+    "ICICIBANK": 1357.00, "INFY": 1004.70, "TCS": 2083.50,
+    "ITC": 266.10, "LT": 3731.60, "BHARTIARTL": 1825.70, "ABCAPITAL": 373.00,
     "NIFTY": 24500.0, "BANKNIFTY": 51200.0, "VIX": 13.5,
 }
 

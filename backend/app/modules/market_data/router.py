@@ -38,10 +38,10 @@ MOCK_BASE_PRICES = {
     "V": 278.42, "JNJ": 152.47, "SPY": 524.82, "QQQ": 457.30,
     "BTC": 64820.0, "ETH": 3412.50, "AMD": 168.73, "NFLX": 685.40,
     "WMT": 84.20, "XOM": 116.83, "DIS": 111.42, "BA": 185.60,
-    # Indian Stocks (NSE)
-    "SBIN": 812.0, "RELIANCE": 2980.0, "HDFCBANK": 1650.0,
-    "ICICIBANK": 1190.0, "INFY": 1840.0, "TCS": 4250.0,
-    "ITC": 495.0, "LT": 3620.0, "BHARTIARTL": 1540.0, "ABCAPITAL": 228.0,
+    # Indian Stocks (NSE) — updated to real market prices Oct 2026
+    "SBIN": 952.65, "RELIANCE": 1208.60, "HDFCBANK": 704.50,
+    "ICICIBANK": 1357.00, "INFY": 1004.70, "TCS": 2083.50,
+    "ITC": 266.10, "LT": 3731.60, "BHARTIARTL": 1825.70, "ABCAPITAL": 373.00,
     # Indices & Benchmarks
     "NIFTY": 24500.0, "BANKNIFTY": 51200.0, "VIX": 13.5,
 }
