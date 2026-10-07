@@ -308,38 +308,27 @@ export default function MarketPage() {
                     </td>
                     <td style={{ textAlign: "center" }}>
                       {q.week52Low && q.week52High ? (
-                        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
-                          <div
-                            style={{
-                              width: 64,
-                              height: 4,
-                              borderRadius: 2,
-                              background: "var(--color-border)",
-                              position: "relative",
-                              overflow: "visible",
-                            }}
-                          >
-                            <div
-                              style={{
-                                position: "absolute",
-                                left: `${Math.min(95, Math.max(2, range52))}%`,
-                                top: "50%",
-                                transform: "translate(-50%, -50%)",
-                                width: 8,
-                                height: 8,
-                                borderRadius: "50%",
-                                background: "var(--color-brand)",
-                              }}
-                            />
-                            <div
-                              style={{
-                                width: `${range52}%`,
-                                height: "100%",
-                                background: "var(--color-brand)",
-                                opacity: 0.3,
-                                borderRadius: 2,
-                              }}
-                            />
+                        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                          {/* Track wrapper — tall enough for the dot to not clip */}
+                          <div style={{ position: "relative", width: 72, height: 16, display: "flex", alignItems: "center" }}>
+                            {/* Background track */}
+                            <div style={{ position: "absolute", left: 0, right: 0, height: 4, borderRadius: 2, background: "var(--color-border)" }} />
+                            {/* Filled portion */}
+                            <div style={{
+                              position: "absolute", left: 0, height: 4, borderRadius: 2,
+                              width: `${range52}%`,
+                              background: "var(--color-brand)", opacity: 0.35,
+                            }} />
+                            {/* Dot — absolutely positioned, no overflow clipping */}
+                            <div style={{
+                              position: "absolute",
+                              left: `${Math.min(92, Math.max(4, range52))}%`,
+                              width: 10, height: 10, borderRadius: "50%",
+                              background: "var(--color-brand)",
+                              border: "2px solid var(--color-bg-elevated)",
+                              transform: "translateX(-50%)",
+                              boxShadow: "0 0 0 1px var(--color-brand)",
+                            }} />
                           </div>
                           <div style={{ fontSize: "0.5625rem", color: "var(--color-text-3)", fontFamily: "var(--font-mono)" }}>
                             {formatCurrency(q.week52Low, true)} – {formatCurrency(q.week52High, true)}

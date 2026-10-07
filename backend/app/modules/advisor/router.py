@@ -126,3 +126,50 @@ async def recommend_portfolio(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Portfolio optimization failed: {str(e)}",
         )
+
+
+# ── Advisor notification ───────────────────────────────────────────────────────
+
+@router.post("/notify", status_code=201)
+async def create_advisor_notification(
+    payload: RecommendRequest,
+    current_user: User = Depends(get_current_user),
+    db = Depends(__import__("app.core.database", fromlist=["get_db"]).get_db),
+):
+    """
+    Run advisor recommendation and store the result as a notification
+    so the user sees it in the notification bell.
+    """
+    from app.models.notification import Notification
+
+    risk_key = payload.risk.strip().lower()
+    if risk_key not in PROFILES:
+        raise HTTPException(status_code=422, detail=f"Invalid risk profile '{payload.risk}'")
+
+    try:
+        result = recommend(amount=payload.amount, risk=risk_key)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    # Build a compact summary message
+    top3 = result.allocations[:3] if result.allocations else []
+    top_str = ", ".join(f"{a.symbol} ({a.weight_pct:.0f}%)" for a in top3)
+    profile_label = PROFILES[risk_key].label
+    message = (
+        f"{profile_label} portfolio recommendation for ₹{int(payload.amount):,}: "
+        f"Top picks — {top_str}. "
+        f"Expected return: {result.portfolio.expected_return_pct:.1f}%, "
+        f"Volatility: {result.portfolio.volatility_pct:.1f}%."
+    )
+
+    notif = Notification(
+        user_id=current_user.id,
+        notification_type="ai_insight",
+        title=f"Advisor: {profile_label} recommendation ready",
+        message=message,
+        is_read=False,
+    )
+    db.add(notif)
+    await db.commit()
+
+    return {"message": "Notification created", "notification_id": notif.id}
