@@ -2,9 +2,9 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { TrendingUp, TrendingDown, ArrowRight, AlertTriangle, ShieldAlert, Shield } from "lucide-react";
+import { TrendingUp, TrendingDown, ArrowRight, AlertTriangle, ShieldAlert, Shield, TrendingUp as SellIcon } from "lucide-react";
 import { PortfolioPerformanceChart } from "@/components/charts/PortfolioChart";
-import { MOCK_INDICES, formatCurrency, formatPercent } from "@/lib/mock-data";
+import { MOCK_INDICES, MOCK_QUOTES, formatCurrency, formatPercent } from "@/lib/mock-data";
 import {
   apiGetPortfolio, apiGetTransactions, apiGetPortfolioRisk,
   type PortfolioSummary, type TransactionOut, type RiskSummary,
@@ -162,6 +162,89 @@ export default function DashboardPage() {
               </div>
             )}
           </div>
+
+          {/* ── Best Time to Sell ── */}
+          {(() => {
+            if (loading || positions.length === 0) return null;
+            // Find positions where the stock is UP today
+            const sellOpps = positions
+              .map(pos => {
+                const q = MOCK_QUOTES[pos.symbol];
+                if (!q || q.changePercent <= 0) return null;
+                const unrealisedPct = pos.unrealized_pnl_percent;
+                return { symbol: pos.symbol, changePercent: q.changePercent, unrealisedPct, quantity: pos.quantity, currentPrice: q.price };
+              })
+              .filter(Boolean) as { symbol: string; changePercent: number; unrealisedPct: number; quantity: number; currentPrice: number }[];
+
+            if (sellOpps.length === 0) return null;
+
+            return (
+              <div style={{
+                background: "var(--color-surface)",
+                border: "1px solid var(--color-positive)",
+                borderLeft: "4px solid var(--color-positive)",
+                borderRadius: "var(--radius-xl)", padding: "1.25rem",
+              }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.625rem", marginBottom: "1rem" }}>
+                  <TrendingUp size={17} style={{ color: "var(--color-positive)" }} />
+                  <span style={{ fontWeight: 600, fontSize: "0.9375rem" }}>Selling Opportunities Today</span>
+                  <span style={{
+                    marginLeft: "auto", fontSize: "0.6875rem", fontWeight: 700,
+                    padding: "2px 8px", borderRadius: "var(--radius-full)",
+                    background: "var(--color-positive-dim)", color: "var(--color-positive)",
+                  }}>
+                    {sellOpps.length} stock{sellOpps.length > 1 ? "s" : ""} up today
+                  </span>
+                </div>
+
+                {sellOpps.map(opp => (
+                  <div key={opp.symbol} style={{
+                    display: "flex", alignItems: "center", gap: "0.875rem",
+                    padding: "0.75rem 0", borderBottom: "1px solid var(--color-border-dim)",
+                  }}>
+                    <div style={{
+                      width: 36, height: 36, borderRadius: 9, flexShrink: 0,
+                      background: "var(--color-positive-dim)",
+                      border: "1px solid var(--color-positive)",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      fontSize: "0.5625rem", fontWeight: 800, color: "var(--color-positive)",
+                    }}>
+                      {opp.symbol.slice(0, 2)}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 600, fontSize: "0.9rem", color: "var(--color-text)" }}>{opp.symbol}</div>
+                      <div style={{ fontSize: "0.75rem", color: "var(--color-text-3)" }}>
+                        You hold {opp.quantity} shares · up{" "}
+                        <span style={{ color: "var(--color-positive)", fontWeight: 600 }}>+{opp.changePercent.toFixed(2)}%</span> today
+                      </div>
+                    </div>
+                    <div style={{ textAlign: "right", flexShrink: 0 }}>
+                      <div style={{ fontFamily: "var(--font-mono)", fontSize: "0.875rem", fontWeight: 700, color: "var(--color-text)" }}>
+                        {formatCurrency(opp.currentPrice)}
+                      </div>
+                      {opp.unrealisedPct !== 0 && (
+                        <div style={{ fontSize: "0.6875rem", color: opp.unrealisedPct >= 0 ? "var(--color-positive)" : "var(--color-negative)", fontFamily: "var(--font-mono)" }}>
+                          {opp.unrealisedPct >= 0 ? "+" : ""}{opp.unrealisedPct.toFixed(1)}% overall
+                        </div>
+                      )}
+                    </div>
+                    <Link href={`/market/${opp.symbol}`} style={{
+                      padding: "0.4375rem 0.875rem", borderRadius: "var(--radius-md)",
+                      background: "var(--color-positive)", color: "#fff",
+                      fontWeight: 700, fontSize: "0.8125rem", textDecoration: "none",
+                      flexShrink: 0,
+                    }}>
+                      Sell →
+                    </Link>
+                  </div>
+                ))}
+
+                <p style={{ fontSize: "0.75rem", color: "var(--color-text-3)", marginTop: "0.875rem", marginBottom: 0 }}>
+                  These stocks are up today. Selling now could lock in gains. Virtual funds only — no real money involved.
+                </p>
+              </div>
+            );
+          })()}
 
           {/* Recent trades */}
           <div style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-xl)", padding: "1.5rem" }}>
