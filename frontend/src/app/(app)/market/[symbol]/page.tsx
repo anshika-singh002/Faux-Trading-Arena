@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, use } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import {
   ArrowLeft, TrendingUp, TrendingDown, Zap,
@@ -85,21 +86,21 @@ function TradePanel({ symbol, currentPrice }: { symbol: string; currentPrice: nu
   // Show warning when buying a stock predicted to go DOWN
   const showBuyWarning = side === "buy" && aiDirection === "DOWN" && !aiWarningDismissed;
 
-  // Show warning if stock is down today AND user is buying
-  const stockIsDownToday = (MOCK_QUOTES[symbol]?.changePercent ?? 0) < -0.5;
+  // Show warning if stock is down today AND user is buying (any negative change)
+  const stockIsDownToday = (MOCK_QUOTES[symbol]?.changePercent ?? 0) < 0;
   const showDayLossWarning = side === "buy" && stockIsDownToday && !aiWarningDismissed;
 
   // Show "best time to sell" if user holds this stock AND it's up today
-  const stockIsUpToday = (MOCK_QUOTES[symbol]?.changePercent ?? 0) > 0.5;
+  const stockIsUpToday = (MOCK_QUOTES[symbol]?.changePercent ?? 0) > 0;
   const showSellHint = side === "sell" && liveQty > 0 && stockIsUpToday;
 
-  // Modal — intercept Review button for risky buys
+  // Modal — intercept Review button for ANY losing stock buy (not just AI bearish)
   const [showRiskModal, setShowRiskModal] = useState(false);
   const needsRiskWarning = side === "buy" && (showBuyWarning || showDayLossWarning);
 
   function handleReviewClick() {
     if (needsRiskWarning) {
-      setShowRiskModal(true); // show modal first
+      setShowRiskModal(true);
     } else {
       setStep("confirm");
     }
@@ -478,13 +479,15 @@ function TradePanel({ symbol, currentPrice }: { symbol: string; currentPrice: nu
         Review {side === "buy" ? "Buy" : "Sell"} →
       </button>
 
-      {/* ── Risk Warning Modal ── */}
-      {showRiskModal && (
+      {/* ── Risk Warning Modal — rendered via portal to escape stacking context ── */}
+      {showRiskModal && typeof window !== "undefined" && createPortal(
         <div style={{
-          position: "fixed", inset: 0, zIndex: 9999,
-          background: "rgba(0,0,0,0.72)",
+          position: "fixed", inset: 0, zIndex: 99999,
+          background: "rgba(0, 0, 0, 0.85)",
           display: "flex", alignItems: "center", justifyContent: "center",
           padding: "1rem",
+          backdropFilter: "blur(4px)",
+          WebkitBackdropFilter: "blur(4px)",
         }}>
           <div style={{
             background: "var(--color-surface)",
@@ -493,7 +496,7 @@ function TradePanel({ symbol, currentPrice }: { symbol: string; currentPrice: nu
             borderRadius: "var(--radius-xl)",
             padding: "2rem",
             maxWidth: 420, width: "100%",
-            boxShadow: "var(--shadow-lg)",
+            boxShadow: "0 24px 48px rgba(0,0,0,0.8)",
           }}>
             {/* Icon */}
             <div style={{
@@ -534,8 +537,8 @@ function TradePanel({ symbol, currentPrice }: { symbol: string; currentPrice: nu
               </div>
               <div style={{ textAlign: "center" }}>
                 <div style={{ fontSize: "0.625rem", color: "var(--color-text-3)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>AI Signal</div>
-                <div style={{ fontFamily: "var(--font-mono)", fontWeight: 700, fontSize: "1rem", color: aiDirection === "DOWN" ? "var(--color-negative)" : "var(--color-warning)" }}>
-                  {aiDirection ?? "LOADING"}
+                <div style={{ fontFamily: "var(--font-mono)", fontWeight: 700, fontSize: "1rem", color: aiDirection === "DOWN" ? "var(--color-negative)" : aiDirection === "UP" ? "var(--color-positive)" : "var(--color-warning)" }}>
+                  {aiDirection ?? "—"}
                 </div>
               </div>
             </div>
@@ -546,7 +549,7 @@ function TradePanel({ symbol, currentPrice }: { symbol: string; currentPrice: nu
                 onClick={() => setShowRiskModal(false)}
                 style={{
                   padding: "0.75rem", borderRadius: "var(--radius-md)",
-                  border: "1px solid var(--color-border)", background: "none",
+                  border: "1px solid var(--color-border)", background: "var(--color-bg-elevated)",
                   color: "var(--color-text-2)", fontWeight: 600, fontSize: "0.875rem",
                   cursor: "pointer", fontFamily: "inherit",
                 }}
@@ -570,7 +573,8 @@ function TradePanel({ symbol, currentPrice }: { symbol: string; currentPrice: nu
               Virtual funds only · No real money involved
             </p>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
