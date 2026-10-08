@@ -2,6 +2,10 @@
 
 import Link from "next/link";
 import { useState, useEffect } from "react";
+import { useLiveMarket } from "@/lib/live-market";
+import { useAssets } from "@/lib/assets";
+import { useAllRisk } from "@/lib/risk";
+import { formatCurrency } from "@/lib/format";
 import {
   TrendingUp, BarChart2, Cpu, FlaskConical,
   MessageSquare, Shield, ArrowRight, Check,
@@ -27,75 +31,11 @@ function Counter({ target, prefix = "", suffix = "", duration = 2000 }: {
   return <span>{prefix}{value.toLocaleString()}{suffix}</span>;
 }
 
-// Fake sparkline SVG
-function Sparkline({ positive = true }: { positive?: boolean }) {
-  const color = positive ? "#26C281" : "#E05252";
-  const path = positive
-    ? "M0,40 L10,38 L20,42 L30,35 L40,30 L50,32 L60,25 L70,20 L80,18 L90,15 L100,10"
-    : "M0,10 L10,12 L20,8 L30,15 L40,20 L50,18 L60,25 L70,30 L80,32 L90,35 L100,40";
-
-  return (
-    <svg width="100" height="50" viewBox="0 0 100 50" fill="none">
-      <defs>
-        <linearGradient id={`sg_${positive}`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={color} stopOpacity="0.2" />
-          <stop offset="100%" stopColor={color} stopOpacity="0" />
-        </linearGradient>
-      </defs>
-      <path
-        d={`${path} L100,50 L0,50 Z`}
-        fill={`url(#sg_${positive})`}
-      />
-      <path d={path} stroke={color} strokeWidth="1.5" fill="none" />
-    </svg>
-  );
-}
-
-// Mini asset card for hero illustration
-function AssetCard({ symbol, name, price, change, positive }: {
-  symbol: string; name: string; price: string; change: string; positive: boolean;
-}) {
-  return (
-    <div style={{
-      background: "var(--color-surface)",
-      border: "1px solid var(--color-border)",
-      borderRadius: "var(--radius-lg)",
-      padding: "0.875rem 1rem",
-      display: "flex",
-      alignItems: "center",
-      gap: "0.75rem",
-      minWidth: 200,
-    }}>
-      <div style={{
-        width: 36, height: 36, borderRadius: 8,
-        background: "var(--color-surface-2)",
-        border: "1px solid var(--color-border)",
-        display: "flex", alignItems: "center", justifyContent: "center",
-        fontSize: "0.6875rem", fontWeight: 700, color: "var(--color-brand)",
-        flexShrink: 0,
-      }}>
-        {symbol.slice(0, 2)}
-      </div>
-      <div style={{ flex: 1 }}>
-        <div style={{ fontWeight: 600, fontSize: "0.875rem" }}>{symbol}</div>
-        <div style={{ fontSize: "0.6875rem", color: "var(--color-text-3)" }}>{name}</div>
-      </div>
-      <div style={{ textAlign: "right" }}>
-        <div style={{ fontFamily: "var(--font-mono)", fontWeight: 700, fontSize: "0.875rem" }}>{price}</div>
-        <div style={{ fontFamily: "var(--font-mono)", fontSize: "0.75rem", color: positive ? "var(--color-positive)" : "var(--color-negative)" }}>
-          {change}
-        </div>
-      </div>
-      <Sparkline positive={positive} />
-    </div>
-  );
-}
-
 const FEATURES = [
   {
     icon: <BarChart2 size={20} />,
     title: "Real Market Data",
-    desc: "Simulated live prices for 20+ stocks, ETFs, and crypto. Practice with realistic market conditions.",
+    desc: "Live NSE prices for the Nifty 50, straight from the market (delayed by a few minutes). Practice under real conditions.",
   },
   {
     icon: <TrendingUp size={20} />,
@@ -120,7 +60,7 @@ const FEATURES = [
   {
     icon: <Trophy size={20} />,
     title: "Risk-Aware Leaderboard",
-    desc: "Compete on risk-adjusted returns. A disciplined 25% beats a reckless 50% here.",
+    desc: "Compete on your real virtual portfolio, valued at live NSE prices.",
   },
   {
     icon: <BookOpen size={20} />,
@@ -138,12 +78,12 @@ const HOW_IT_WORKS = [
   {
     step: "01",
     title: "Create your account",
-    desc: "Sign up and receive ₹84 lakh in virtual funds, ready to deploy immediately.",
+    desc: "Sign up and receive ₹1 crore in virtual funds, ready to deploy immediately.",
   },
   {
     step: "02",
     title: "Explore the market",
-    desc: "Browse stocks, ETFs, and crypto. Read AI insights, check charts, add to your watchlist.",
+    desc: "Browse the Nifty 50. Check live charts and risk alerts, read AI insights, add stocks to your watchlist.",
   },
   {
     step: "03",
@@ -163,6 +103,24 @@ const HOW_IT_WORKS = [
 ];
 
 export default function LandingPage() {
+  // Everything numeric on this page comes from the live market feed
+  const { quotes, indices, status } = useLiveMarket();
+  const assets = useAssets();
+  const risk = useAllRisk();
+  const nifty = indices.find((i) => i.symbol === "NIFTY");
+  const movers = Object.values(quotes)
+    .sort((a, b) => Math.abs(b.changePercent) - Math.abs(a.changePercent))
+    .slice(0, 3)
+    .map((q) => ({
+      symbol: q.symbol,
+      price: formatCurrency(q.price),
+      change: `${q.changePercent >= 0 ? "+" : "−"}${Math.abs(q.changePercent).toFixed(2)}%`,
+      positive: q.changePercent >= 0,
+    }));
+  const topRisk = Object.values(risk)
+    .filter((r) => r.available && r.level === "high" && r.reasons.length > 0)
+    .sort((a, b) => b.score - a.score)[0];
+
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   return (
@@ -290,7 +248,7 @@ export default function LandingPage() {
             marginBottom: "2rem",
             maxWidth: 460,
           }}>
-            Trade stocks, ETFs, and crypto with ₹84,00,000 in virtual funds. Build strategies, test them with real backtesting, and get AI-powered insights — without risking a single rupee.
+            Trade Nifty 50 stocks at live NSE prices with ₹1,00,00,000 in virtual funds. Build strategies, test them with real backtesting, and get AI-powered insights — without risking a single rupee.
           </p>
 
           <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap", marginBottom: "2rem" }}>
@@ -329,11 +287,11 @@ export default function LandingPage() {
           </div>
 
           <div style={{ display: "flex", gap: "1.5rem", flexWrap: "wrap" }}>
-            {[
-              { value: "84 L", label: "Virtual funds", prefix: "₹" },
-              { value: 20,     label: "Assets to trade", suffix: "+" },
+            {([
+              { value: "1 Cr", label: "Virtual funds", prefix: "₹" },
+              { value: assets.length || 51, label: "Live NSE stocks" },
               { value: 0,      label: "Real money needed", prefix: "₹" },
-            ].map(({ value, label, prefix, suffix }) => (
+            ] as { value: string | number; label: string; prefix?: string; suffix?: string }[]).map(({ value, label, prefix, suffix }) => (
               <div key={label}>
                 <div style={{ fontFamily: "var(--font-mono)", fontSize: "1.375rem", fontWeight: 800, color: "var(--color-text)" }}>
                   {typeof value === "number"
@@ -372,44 +330,31 @@ export default function LandingPage() {
               <div style={{ flex: 1, height: 16, borderRadius: 4, background: "var(--color-surface-2)", margin: "0 0.5rem" }} />
             </div>
 
-            {/* Fake portfolio header */}
+            {/* Live Nifty 50 header */}
             <div style={{ padding: "1rem 1.25rem", borderBottom: "1px solid var(--color-border)" }}>
-              <div style={{ fontSize: "0.6875rem", color: "var(--color-text-3)", marginBottom: 4 }}>Portfolio Value</div>
-              <div style={{ display: "flex", alignItems: "baseline", gap: "0.75rem" }}>
-                <div style={{ fontFamily: "var(--font-mono)", fontSize: "1.75rem", fontWeight: 800 }}>₹1,07,37,667</div>
-                <div style={{ color: "var(--color-positive)", fontSize: "0.875rem", fontFamily: "var(--font-mono)", fontWeight: 600 }}>▲ +₹1,07,898 (1.01%)</div>
+              <div style={{ fontSize: "0.6875rem", color: "var(--color-text-3)", marginBottom: 4 }}>
+                NIFTY 50 · {status === "live" ? "live" : status === "loading" ? "connecting…" : "feed offline"}
               </div>
-            </div>
-
-            {/* Fake chart */}
-            <div style={{ padding: "1rem 1.25rem", borderBottom: "1px solid var(--color-border)" }}>
-              <svg width="100%" height="80" viewBox="0 0 400 80" preserveAspectRatio="none">
-                <defs>
-                  <linearGradient id="heroChartGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#26C281" stopOpacity="0.2" />
-                    <stop offset="100%" stopColor="#26C281" stopOpacity="0" />
-                  </linearGradient>
-                </defs>
-                <path
-                  d="M0,70 L40,65 L80,68 L120,55 L160,50 L200,52 L240,40 L280,35 L320,30 L360,20 L400,15 L400,80 L0,80 Z"
-                  fill="url(#heroChartGrad)"
-                />
-                <path
-                  d="M0,70 L40,65 L80,68 L120,55 L160,50 L200,52 L240,40 L280,35 L320,30 L360,20 L400,15"
-                  stroke="#26C281"
-                  strokeWidth="2"
-                  fill="none"
-                />
-              </svg>
+              {nifty ? (
+                <div style={{ display: "flex", alignItems: "baseline", gap: "0.75rem" }}>
+                  <div style={{ fontFamily: "var(--font-mono)", fontSize: "1.75rem", fontWeight: 800 }}>
+                    {nifty.value.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+                  </div>
+                  <div style={{ color: nifty.changePercent >= 0 ? "var(--color-positive)" : "var(--color-negative)", fontSize: "0.875rem", fontFamily: "var(--font-mono)", fontWeight: 600 }}>
+                    {nifty.changePercent >= 0 ? "▲ +" : "▼ "}{nifty.changePercent.toFixed(2)}%
+                  </div>
+                </div>
+              ) : (
+                <div style={{ fontFamily: "var(--font-mono)", fontSize: "1.75rem", fontWeight: 800, color: "var(--color-text-3)" }}>—</div>
+              )}
             </div>
 
             {/* Asset cards */}
             <div style={{ padding: "0.875rem 1.25rem", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-              {[
-                { symbol: "SBIN",     name: "State Bank of India",       price: "₹812",   change: "+0.62%", positive: true  },
-                { symbol: "TCS",      name: "Tata Consultancy Services", price: "₹3,487", change: "−0.71%", positive: false },
-                { symbol: "RELIANCE", name: "Reliance Industries",       price: "₹2,945", change: "+0.17%", positive: true  },
-              ].map((a) => (
+              {movers.length === 0 && (
+                <div style={{ fontSize: "0.8125rem", color: "var(--color-text-3)", padding: "0.5rem" }}>Loading live prices…</div>
+              )}
+              {movers.map((a) => (
                 <div key={a.symbol} style={{
                   display: "flex",
                   alignItems: "center",
@@ -453,10 +398,12 @@ export default function LandingPage() {
           }}>
             <div style={{ display: "flex", alignItems: "center", gap: "0.375rem", marginBottom: 4 }}>
               <Zap size={11} style={{ color: "var(--color-brand)" }} />
-              <span style={{ fontSize: "0.625rem", fontWeight: 700, color: "var(--color-brand)", textTransform: "uppercase", letterSpacing: "0.06em" }}>AI Insight</span>
+              <span style={{ fontSize: "0.625rem", fontWeight: 700, color: "var(--color-brand)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Live risk alert</span>
             </div>
             <div style={{ fontSize: "0.75rem", color: "var(--color-text-2)", lineHeight: 1.4 }}>
-              Tech concentration at 57%. Consider diversifying into defensive sectors.
+              {topRisk
+                ? `${topRisk.symbol}: ${topRisk.reasons[0].text}.`
+                : "Risk alerts are computed from each stock's real price history."}
             </div>
           </div>
         </div>
@@ -480,8 +427,8 @@ export default function LandingPage() {
           textAlign: "center",
         }}>
           {[
-            { value: "84 L",  label: "Starting Capital", prefix: "₹" },
-            { value: "20",    label: "Tradeable Assets", suffix: "+" },
+            { value: "1 Cr",  label: "Starting Capital", prefix: "₹" },
+            { value: String(assets.length || 51), label: "Live NSE Stocks" },
             { value: "0.1",   label: "Simulated Fee", suffix: "%" },
             { value: "0",     label: "Real Money Risk", prefix: "₹" },
           ].map(({ value, label, prefix, suffix }) => (
@@ -628,7 +575,7 @@ export default function LandingPage() {
               AI that explains,<br />not prescribes
             </h2>
             <p style={{ color: "var(--color-text-2)", fontSize: "1rem", lineHeight: 1.7, marginBottom: "1.5rem" }}>
-              The AI coach and insights engine doesn't just say "BUY" or "SELL". It explains the reasoning, highlights risk factors, and helps you develop your own judgment.
+              The AI coach and insights engine doesn&apos;t just say &quot;BUY&quot; or &quot;SELL&quot;. It explains the reasoning, highlights risk factors, and helps you develop your own judgment.
             </p>
             <ul style={{ listStyle: "none", display: "flex", flexDirection: "column", gap: "0.75rem" }}>
               {[
@@ -663,7 +610,7 @@ export default function LandingPage() {
             }}>
               <Zap size={14} style={{ color: "var(--color-brand)" }} />
               <span style={{ fontSize: "0.875rem", fontWeight: 600 }}>AI Trading Coach</span>
-              <span style={{ marginLeft: "auto", fontSize: "0.625rem", color: "var(--color-text-3)", background: "var(--color-surface-2)", padding: "2px 6px", borderRadius: 3 }}>MOCK</span>
+              <span style={{ marginLeft: "auto", fontSize: "0.625rem", color: "var(--color-text-3)", background: "var(--color-surface-2)", padding: "2px 6px", borderRadius: 3 }}>EXAMPLE</span>
             </div>
             <div style={{ padding: "1rem 1.25rem" }}>
               {/* User message */}
@@ -701,9 +648,9 @@ export default function LandingPage() {
                   lineHeight: 1.6,
                   maxWidth: "90%",
                 }}>
-                  Your tech concentration (57%) amplifies correlated risk. A sector-wide drawdown could hit harder than individual position sizes suggest.
+                  The coach reads your actual holdings at live prices: how much sits in each sector, which positions are in profit or loss, and which stocks are showing risk flags.
                   <br /><br />
-                  Consider your <strong style={{ color: "var(--color-text)" }}>portfolio beta: 1.28</strong> — it moves 28% more than the market in both directions.
+                  Ask about any Nifty 50 stock and it answers from <strong style={{ color: "var(--color-text)" }}>live prices, indicators and news</strong>, never from made-up figures.
                 </div>
               </div>
             </div>
@@ -729,65 +676,27 @@ export default function LandingPage() {
               Compete on skill, not luck
             </h2>
             <p style={{ color: "var(--color-text-2)", maxWidth: 480, margin: "0 auto", fontSize: "1rem" }}>
-              Rankings are based on risk-adjusted returns. Taking massive risks to rank higher is penalized.
+              Rankings come from your real virtual portfolio, valued at live prices.
             </p>
           </div>
 
-          {/* Mini leaderboard */}
+          {/* How ranking works (the live leaderboard is inside the app) */}
           <div style={{
             background: "var(--color-surface)",
             border: "1px solid var(--color-border)",
             borderRadius: "var(--radius-xl)",
-            overflow: "hidden",
+            padding: "1.5rem 1.75rem",
+            display: "grid",
+            gap: "0.75rem",
           }}>
-            <div style={{ padding: "0.75rem 1.25rem", borderBottom: "1px solid var(--color-border)", display: "flex", gap: "1rem" }}>
-              {["Rank", "Trader", "Return", "Sharpe", "Win Rate"].map((h, i) => (
-                <div key={h} style={{
-                  fontSize: "0.6875rem",
-                  fontWeight: 600,
-                  color: "var(--color-text-3)",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.05em",
-                  flex: i === 1 ? 2 : 1,
-                  textAlign: i > 1 ? "right" : "left",
-                }}>
-                  {h}
-                </div>
-              ))}
-            </div>
             {[
-              { rank: 1, name: "alpha_trader",   ret: "+48.92%", sharpe: "2.14", win: "68.4%", medal: "🏆" },
-              { rank: 2, name: "quant_maya",     ret: "+41.23%", sharpe: "1.98", win: "65.2%", medal: "🥈" },
-              { rank: 3, name: "risk_aware",     ret: "+38.45%", sharpe: "2.31", win: "71.0%", medal: "🥉" },
-              { rank: 7, name: "trader",         ret: "+27.84%", sharpe: "1.71", win: "62.5%", current: true },
-            ].map((entry) => (
-              <div
-                key={entry.rank}
-                style={{
-                  padding: "0.875rem 1.25rem",
-                  borderBottom: "1px solid var(--color-border-dim)",
-                  display: "flex",
-                  gap: "1rem",
-                  alignItems: "center",
-                  background: entry.current ? "var(--color-brand-subtle)" : undefined,
-                }}
-              >
-                <div style={{ flex: 1 }}>
-                  <span style={{
-                    fontFamily: "var(--font-mono)",
-                    fontWeight: 700,
-                    color: entry.rank <= 3 ? ["#E8A838", "#C0C0C0", "#CD7F32"][entry.rank - 1] : "var(--color-text-3)",
-                  }}>
-                    {entry.medal ?? `#${entry.rank}`}
-                  </span>
-                </div>
-                <div style={{ flex: 2, fontWeight: 600, fontSize: "0.875rem", display: "flex", alignItems: "center", gap: 6 }}>
-                  {entry.name}
-                  {entry.current && <span style={{ fontSize: "0.625rem", background: "var(--color-brand)", color: "var(--color-text-inv)", padding: "1px 5px", borderRadius: "var(--radius-full)", fontWeight: 700 }}>YOU</span>}
-                </div>
-                <div style={{ flex: 1, textAlign: "right", fontFamily: "var(--font-mono)", fontSize: "0.875rem", fontWeight: 700, color: "var(--color-positive)" }}>{entry.ret}</div>
-                <div style={{ flex: 1, textAlign: "right", fontFamily: "var(--font-mono)", fontSize: "0.875rem", color: "var(--color-text-2)" }}>{entry.sharpe}</div>
-                <div style={{ flex: 1, textAlign: "right", fontFamily: "var(--font-mono)", fontSize: "0.875rem", color: "var(--color-text-2)" }}>{entry.win}</div>
+              ["Ranked on your real portfolio", "Cash plus every position valued at live NSE prices."],
+              ["Return, win rate and trade count", "Shown for every trader, updated as prices move."],
+              ["Everyone starts equal", "₹1 crore of virtual funds each, so skill decides the order."],
+            ].map(([t, d]) => (
+              <div key={t} style={{ display: "flex", gap: "0.625rem", fontSize: "0.9375rem", color: "var(--color-text-2)" }}>
+                <Check size={16} style={{ color: "var(--color-positive)", flexShrink: 0, marginTop: 3 }} />
+                <span><strong style={{ color: "var(--color-text)" }}>{t}.</strong> {d}</span>
               </div>
             ))}
           </div>

@@ -67,7 +67,7 @@ export default function RegisterPage() {
         <div style={{ marginBottom: "2rem", textAlign: "center" }}>
           <h1 style={{ fontSize: "1.5rem", fontWeight: 700, marginBottom: "0.375rem" }}>Start trading for free</h1>
           <p style={{ color: "var(--color-text-3)", fontSize: "0.875rem" }}>
-            ₹84 lakh in virtual funds, no credit card required
+            ₹1 crore in virtual funds, no credit card required
           </p>
         </div>
 

@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { RefreshCw, Package } from "lucide-react";
 import { OrderStatusBadge } from "@/components/ui/Badge";
-import { formatCurrency } from "@/lib/mock-data";
+import { formatCurrency } from "@/lib/format";
 import { apiGetOrders, type OrderOut } from "@/lib/api";
 import { useAuthStore } from "@/lib/auth-store";
 import type { OrderStatus } from "@/lib/types";
@@ -22,14 +22,17 @@ export default function OrdersPage() {
   const [loading, setLoading]   = useState(true);
   const [tab, setTab]           = useState<"all" | OrderStatus>("all");
 
-  async function load() {
+  async function load(initial = false) {
     if (!isAuthenticated) return;
-    setLoading(true);
+    if (!initial) setLoading(true);
     try { setOrders(await apiGetOrders()); }
     catch { setOrders([]); }
     finally { setLoading(false); }
   }
-  useEffect(() => { load(); }, [isAuthenticated]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const id = setTimeout(() => load(), 0);
+    return () => clearTimeout(id);
+  }, [isAuthenticated]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const filtered = tab === "all" ? orders : orders.filter(o => o.status === tab);
   const count = (s: OrderStatus) => orders.filter(o => o.status === s).length;
@@ -54,7 +57,7 @@ export default function OrdersPage() {
           <p style={{ fontSize: "0.875rem", color: "var(--color-text-3)", margin: 0 }}>Your virtual order history</p>
         </div>
         <div style={{ display: "flex", gap: "0.5rem" }}>
-          <button onClick={load} disabled={loading} style={{ background: "none", border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", padding: "0.4375rem 0.75rem", cursor: "pointer", color: "var(--color-text-3)", display: "flex", alignItems: "center", gap: 6, fontSize: "0.8125rem", fontFamily: "inherit", opacity: loading ? 0.5 : 1 }}>
+          <button onClick={() => load()} disabled={loading} style={{ background: "none", border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", padding: "0.4375rem 0.75rem", cursor: "pointer", color: "var(--color-text-3)", display: "flex", alignItems: "center", gap: 6, fontSize: "0.8125rem", fontFamily: "inherit", opacity: loading ? 0.5 : 1 }}>
             <RefreshCw size={13} style={{ animation: loading ? "spin 1s linear infinite" : "none" }} />
           </button>
           <Link href="/market" style={{ background: "var(--color-brand)", color: "var(--color-text-inv)", padding: "0.4375rem 1rem", borderRadius: "var(--radius-md)", fontSize: "0.8125rem", fontWeight: 600, textDecoration: "none" }}>

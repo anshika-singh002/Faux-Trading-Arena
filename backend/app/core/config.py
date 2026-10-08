@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
 
     # Database
-    DATABASE_URL: str = "postgresql+asyncpg://postgres:password@localhost:5432/faux_trading"
+    DATABASE_URL: str = "sqlite+aiosqlite:///./faux_trading.db"  # use requirements-postgres.txt for PostgreSQL
 
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"
@@ -29,6 +29,11 @@ class Settings(BaseSettings):
     INITIAL_VIRTUAL_BALANCE: float = 10_000_000.0  # ₹1 crore
     TRADING_FEE_PERCENT: float = 0.001   # 0.1%
     SLIPPAGE_PERCENT: float = 0.0005     # 0.05%
+
+    # Live market data (yfinance). Falls back to simulated prices when unavailable.
+    LIVE_MARKET_DATA: bool = True
+    LIVE_REFRESH_SECONDS: int = 60
+    DAILY_REFRESH_SECONDS: int = 900
 
     # AI service mode: "mock" uses MockAIService, "live" uses MLModelAIService
     AI_MODE: str = "mock"

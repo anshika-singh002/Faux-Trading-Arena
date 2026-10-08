@@ -4,23 +4,27 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { RefreshCw, TrendingUp } from "lucide-react";
 import { PortfolioPerformanceChart } from "@/components/charts/PortfolioChart";
-import { formatCurrency, formatPercent } from "@/lib/mock-data";
+import { formatCurrency, formatPercent } from "@/lib/format";
 import { apiGetPortfolio, type PortfolioSummary } from "@/lib/api";
 import { useAuthStore } from "@/lib/auth-store";
+import { useAllRisk, riskLabel } from "@/lib/risk";
 
 export default function PortfolioPage() {
   const { isAuthenticated, user } = useAuthStore();
   const [portfolio, setPortfolio] = useState<PortfolioSummary | null>(null);
   const [loading, setLoading]     = useState(true);
 
-  async function load() {
+  async function load(initial = false) {
     if (!isAuthenticated) return;
-    setLoading(true);
+    if (!initial) setLoading(true);
     try { setPortfolio(await apiGetPortfolio()); }
     catch { /* show empty state */ }
     finally { setLoading(false); }
   }
-  useEffect(() => { load(); }, [isAuthenticated]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const id = setTimeout(() => load(), 0);
+    return () => clearTimeout(id);
+  }, [isAuthenticated]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const cash        = portfolio?.cash ?? user?.virtualBalance ?? 0;
   const totalValue  = portfolio?.total_value ?? cash;
@@ -30,6 +34,12 @@ export default function PortfolioPage() {
   const realized    = portfolio?.realized_pnl ?? 0;
   const invested    = portfolio?.invested ?? 0;
   const positions   = portfolio?.positions ?? [];
+
+  // Holdings whose real price history says gains may reverse, or losses may deepen
+  const risk = useAllRisk();
+  const atRisk = positions
+    .map((p) => ({ pos: p, report: risk[p.symbol] }))
+    .filter(({ report }) => report?.available && (report.level === "medium" || report.level === "high"));
 
   const Sk = ({ w = 80, h = 16 }: { w?: number | string; h?: number }) => (
     <div style={{ width: w, height: h, borderRadius: 4, background: "var(--color-border)" }} className="skeleton" />
@@ -46,11 +56,41 @@ export default function PortfolioPage() {
             Virtual portfolio · All values in ₹
           </p>
         </div>
-        <button onClick={load} disabled={loading} style={{ background: "none", border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", padding: "0.4375rem 0.75rem", cursor: "pointer", color: "var(--color-text-3)", display: "flex", alignItems: "center", gap: 6, fontSize: "0.8125rem", fontFamily: "inherit", opacity: loading ? 0.5 : 1 }}>
+        <button onClick={() => load()} disabled={loading} style={{ background: "none", border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", padding: "0.4375rem 0.75rem", cursor: "pointer", color: "var(--color-text-3)", display: "flex", alignItems: "center", gap: 6, fontSize: "0.8125rem", fontFamily: "inherit", opacity: loading ? 0.5 : 1 }}>
           <RefreshCw size={13} style={{ animation: loading ? "spin 1s linear infinite" : "none" }} />
           Refresh
         </button>
       </div>
+
+      {atRisk.length > 0 && (
+        <div style={{ background: "var(--color-warning-dim)", border: "1px solid var(--color-warning)", borderRadius: "var(--radius-lg)", padding: "1rem 1.25rem", marginBottom: "1.5rem" }}>
+          <div style={{ fontWeight: 700, fontSize: "0.875rem", color: "var(--color-warning)", marginBottom: "0.5rem" }}>
+            Risk alert: {atRisk.length} of your holdings {atRisk.length === 1 ? "needs" : "need"} attention
+          </div>
+          <div style={{ display: "grid", gap: "0.625rem" }}>
+            {atRisk.map(({ pos, report }) => {
+              const inProfit = pos.unrealized_pnl > 0;
+              const headline =
+                report.kind === "overheated" && inProfit
+                  ? `You are up ${formatCurrency(pos.unrealized_pnl)}, but the stock looks stretched and that profit could reverse`
+                  : report.kind === "falling" && !inProfit
+                    ? `You are down ${formatCurrency(Math.abs(pos.unrealized_pnl))} and the trend is still falling`
+                    : report.kind === "falling"
+                      ? "In profit now, but the trend has turned down"
+                      : "Elevated risk";
+              return (
+                <div key={pos.symbol} style={{ fontSize: "0.8125rem", color: "var(--color-text-2)", lineHeight: 1.5 }}>
+                  <Link href={`/market/${pos.symbol}`} style={{ fontWeight: 700, color: "var(--color-text)" }}>{pos.symbol}</Link>
+                  {" "}({riskLabel(report)}): {headline}.
+                  <div style={{ color: "var(--color-text-3)", fontSize: "0.75rem" }}>
+                    {report.reasons.slice(0, 3).map((r) => r.text).join(" · ")}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Summary strip — single row of 4 numbers */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "1px", background: "var(--color-border)", borderRadius: "var(--radius-xl)", overflow: "hidden", marginBottom: "1.75rem" }}>

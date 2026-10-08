@@ -4,10 +4,11 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { TrendingUp, TrendingDown, ArrowRight, AlertTriangle, ShieldAlert, Shield, TrendingUp as SellIcon } from "lucide-react";
 import { PortfolioPerformanceChart } from "@/components/charts/PortfolioChart";
-import { MOCK_INDICES, MOCK_QUOTES, formatCurrency, formatPercent } from "@/lib/mock-data";
+import { formatCurrency, formatPercent } from "@/lib/format";
+import { useLiveMarket } from "@/lib/live-market";
 import {
-  apiGetPortfolio, apiGetTransactions, apiGetPortfolioRisk,
-  type PortfolioSummary, type TransactionOut, type RiskSummary,
+  apiGetPortfolio, apiGetTransactions, apiGetPortfolioRisk, apiModel1PredictAll,
+  type PortfolioSummary, type TransactionOut, type RiskSummary, type Model1Prediction,
 } from "@/lib/api";
 import { useAuthStore } from "@/lib/auth-store";
 
@@ -16,14 +17,40 @@ export default function DashboardPage() {
   const [portfolio, setPortfolio]       = useState<PortfolioSummary | null>(null);
   const [transactions, setTransactions] = useState<TransactionOut[]>([]);
   const [risk, setRisk]                 = useState<RiskSummary | null>(null);
+  const [predictions, setPredictions]   = useState<Record<string, Model1Prediction>>({});
   const [loading, setLoading]           = useState(true);
+  const { indices } = useLiveMarket();
+
+  const [error, setError]           = useState("");
 
   useEffect(() => {
     if (!isAuthenticated) return;
-    Promise.all([apiGetPortfolio(), apiGetTransactions(), apiGetPortfolioRisk()])
-      .then(([p, txs, r]) => { setPortfolio(p); setTransactions(txs); setRisk(r); })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    let cancelled = false;
+
+    // Refreshed every 30s so portfolio value and P&L follow live prices.
+    // Each call is independent: one failing doesn't blank the whole page.
+    async function load() {
+      const [p, txs, r] = await Promise.allSettled([apiGetPortfolio(), apiGetTransactions(), apiGetPortfolioRisk()]);
+      if (cancelled) return;
+      if (p.status === "fulfilled") { setPortfolio(p.value); setError(""); }
+      else setError(p.reason instanceof Error ? p.reason.message : "Could not reach the server");
+      if (txs.status === "fulfilled") setTransactions(txs.value);
+      if (r.status === "fulfilled") setRisk(r.value);
+      setLoading(false);
+    }
+
+    load();
+    const id = setInterval(load, 30_000);
+
+    // AI signals are optional: the dashboard works without them
+    const loadSignals = () =>
+      apiModel1PredictAll()
+        .then((r) => { if (!cancelled) setPredictions(Object.fromEntries(r.predictions.map((p) => [p.symbol, p]))); })
+        .catch(() => {});
+    loadSignals();
+    const signalId = setInterval(loadSignals, 5 * 60_000);
+
+    return () => { cancelled = true; clearInterval(id); clearInterval(signalId); };
   }, [isAuthenticated]);
 
   const cash = portfolio?.cash ?? user?.virtualBalance ?? 0;
@@ -46,29 +73,39 @@ export default function DashboardPage() {
           {user ? `Hey, ${user.displayName.split(" ")[0]}` : "Dashboard"}
         </h1>
         <p style={{ fontSize: "0.875rem", color: "var(--color-text-3)", margin: 0 }}>
-          Here's your virtual portfolio overview
+          Here&apos;s your virtual portfolio overview
         </p>
       </div>
+
+      {error && (
+        <div style={{
+          marginBottom: "1rem", padding: "0.75rem 1rem", borderRadius: "var(--radius-md)",
+          border: "1px solid var(--color-negative)", background: "var(--color-negative-dim)",
+          color: "var(--color-negative)", fontSize: "0.8125rem",
+        }}>
+          Couldn&rsquo;t load your portfolio ({error}). {portfolio ? "Showing the last data we received." : "Is the backend running?"}
+        </div>
+      )}
 
       {/* ── 3 stat tiles ── */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "1rem", marginBottom: "2rem" }}>
         {[
           {
             label: "Portfolio Value",
-            value: loading ? null : formatCurrency(totalValue),
-            sub: loading ? null : `${formatCurrency(cash)} cash available`,
+            value: loading ? null : !portfolio && error ? "—" : formatCurrency(totalValue),
+            sub: loading ? null : !portfolio && error ? "unavailable" : `${formatCurrency(cash)} cash available`,
             neutral: true,
           },
           {
             label: "Total Return",
-            value: loading ? null : `${totalReturn >= 0 ? "+" : ""}${formatCurrency(totalReturn)}`,
-            sub: loading ? null : `${formatPercent(totalReturnPct)} all time`,
+            value: loading ? null : !portfolio ? "—" : `${totalReturn >= 0 ? "+" : ""}${formatCurrency(totalReturn)}`,
+            sub: loading ? null : !portfolio ? "unavailable" : `${formatPercent(totalReturnPct)} all time`,
             positive: totalReturn >= 0,
             negative: totalReturn < 0,
           },
           {
             label: "Unrealized P&L",
-            value: loading ? null : `${unrealizedPnl >= 0 ? "+" : ""}${formatCurrency(unrealizedPnl)}`,
+            value: loading ? null : !portfolio ? "—" : `${unrealizedPnl >= 0 ? "+" : ""}${formatCurrency(unrealizedPnl)}`,
             sub: `${positions.length} open position${positions.length !== 1 ? "s" : ""}`,
             positive: unrealizedPnl >= 0,
             negative: unrealizedPnl < 0,
@@ -163,37 +200,40 @@ export default function DashboardPage() {
             )}
           </div>
 
-          {/* ── Best Time to Sell ── */}
+          {/* ── Selling Opportunities (XGBoost) ── */}
           {(() => {
             if (loading || positions.length === 0) return null;
-            // Find positions where the stock is UP today
+            // Held stocks the XGBoost model expects to fall over the next 5 days
             const sellOpps = positions
               .map(pos => {
-                const q = MOCK_QUOTES[pos.symbol];
-                if (!q || q.changePercent <= 0) return null;
-                const unrealisedPct = pos.unrealized_pnl_percent;
-                return { symbol: pos.symbol, changePercent: q.changePercent, unrealisedPct, quantity: pos.quantity, currentPrice: q.price };
+                const pred = predictions[pos.symbol];
+                if (!pred || pred.direction !== "DOWN") return null;
+                return {
+                  symbol: pos.symbol, quantity: pos.quantity,
+                  currentPrice: pos.current_price, unrealisedPct: pos.unrealized_pnl_percent,
+                  pDown: pred.p_down, predictedPrice: pred.predicted_price,
+                };
               })
-              .filter(Boolean) as { symbol: string; changePercent: number; unrealisedPct: number; quantity: number; currentPrice: number }[];
+              .filter(Boolean) as { symbol: string; quantity: number; currentPrice: number; unrealisedPct: number; pDown: number; predictedPrice: number }[];
 
             if (sellOpps.length === 0) return null;
 
             return (
               <div style={{
                 background: "var(--color-surface)",
-                border: "1px solid var(--color-positive)",
-                borderLeft: "4px solid var(--color-positive)",
+                border: "1px solid var(--color-negative)",
+                borderLeft: "4px solid var(--color-negative)",
                 borderRadius: "var(--radius-xl)", padding: "1.25rem",
               }}>
                 <div style={{ display: "flex", alignItems: "center", gap: "0.625rem", marginBottom: "1rem" }}>
-                  <TrendingUp size={17} style={{ color: "var(--color-positive)" }} />
-                  <span style={{ fontWeight: 600, fontSize: "0.9375rem" }}>Selling Opportunities Today</span>
+                  <TrendingDown size={17} style={{ color: "var(--color-negative)" }} />
+                  <span style={{ fontWeight: 600, fontSize: "0.9375rem" }}>AI Sell Signals</span>
                   <span style={{
                     marginLeft: "auto", fontSize: "0.6875rem", fontWeight: 700,
                     padding: "2px 8px", borderRadius: "var(--radius-full)",
-                    background: "var(--color-positive-dim)", color: "var(--color-positive)",
+                    background: "var(--color-negative-dim)", color: "var(--color-negative)",
                   }}>
-                    {sellOpps.length} stock{sellOpps.length > 1 ? "s" : ""} up today
+                    {sellOpps.length} holding{sellOpps.length > 1 ? "s" : ""} flagged
                   </span>
                 </div>
 
@@ -204,18 +244,19 @@ export default function DashboardPage() {
                   }}>
                     <div style={{
                       width: 36, height: 36, borderRadius: 9, flexShrink: 0,
-                      background: "var(--color-positive-dim)",
-                      border: "1px solid var(--color-positive)",
+                      background: "var(--color-negative-dim)",
+                      border: "1px solid var(--color-negative)",
                       display: "flex", alignItems: "center", justifyContent: "center",
-                      fontSize: "0.5625rem", fontWeight: 800, color: "var(--color-positive)",
+                      fontSize: "0.5625rem", fontWeight: 800, color: "var(--color-negative)",
                     }}>
                       {opp.symbol.slice(0, 2)}
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontWeight: 600, fontSize: "0.9rem", color: "var(--color-text)" }}>{opp.symbol}</div>
                       <div style={{ fontSize: "0.75rem", color: "var(--color-text-3)" }}>
-                        You hold {opp.quantity} shares · up{" "}
-                        <span style={{ color: "var(--color-positive)", fontWeight: 600 }}>+{opp.changePercent.toFixed(2)}%</span> today
+                        You hold {opp.quantity} shares · model sees{" "}
+                        <span style={{ color: "var(--color-negative)", fontWeight: 600 }}>{(opp.pDown * 100).toFixed(0)}% chance of falling</span>
+                        {" "}(5-day target {formatCurrency(opp.predictedPrice)})
                       </div>
                     </div>
                     <div style={{ textAlign: "right", flexShrink: 0 }}>
@@ -230,7 +271,7 @@ export default function DashboardPage() {
                     </div>
                     <Link href={`/market/${opp.symbol}`} style={{
                       padding: "0.4375rem 0.875rem", borderRadius: "var(--radius-md)",
-                      background: "var(--color-positive)", color: "#fff",
+                      background: "var(--color-negative)", color: "#fff",
                       fontWeight: 700, fontSize: "0.8125rem", textDecoration: "none",
                       flexShrink: 0,
                     }}>
@@ -240,7 +281,7 @@ export default function DashboardPage() {
                 ))}
 
                 <p style={{ fontSize: "0.75rem", color: "var(--color-text-3)", marginTop: "0.875rem", marginBottom: 0 }}>
-                  These stocks are up today. Selling now could lock in gains. Virtual funds only — no real money involved.
+                  Signals come from an XGBoost model trained on historical data. Educational only — not financial advice. Virtual funds only.
                 </p>
               </div>
             );
@@ -374,7 +415,7 @@ export default function DashboardPage() {
               <span style={{ fontSize: "0.9375rem", fontWeight: 600 }}>Indices</span>
               <Link href="/market" style={{ fontSize: "0.8125rem", color: "var(--color-brand)", textDecoration: "none" }}>Market →</Link>
             </div>
-            {MOCK_INDICES.map((idx) => (
+            {indices.map((idx) => (
               <div key={idx.symbol} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.5rem 0", borderBottom: "1px solid var(--color-border-dim)" }}>
                 <div>
                   <div style={{ fontSize: "0.8125rem", fontWeight: 500, color: "var(--color-text)" }}>{idx.name}</div>

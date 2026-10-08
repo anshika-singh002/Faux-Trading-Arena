@@ -76,8 +76,12 @@ BASE_FALLBACK_PRICES = {
 }
 
 
+class PriceDataUnavailable(RuntimeError):
+    """Real price history could not be loaded; the advisor never substitutes made-up prices."""
+
+
 def _generate_synthetic_prices(tickers: list[str], days: int = 1260) -> pd.DataFrame:
-    """Deterministic synthetic price series used as fallback when network/Yahoo Finance is unavailable."""
+    """Deterministic synthetic price series. Test fixture only: never used for real recommendations."""
     dates = pd.bdate_range(end=datetime.now(timezone.utc).date(), periods=days)
     data = {}
     for t in tickers:
@@ -100,11 +104,11 @@ def _generate_synthetic_prices(tickers: list[str], days: int = 1260) -> pd.DataF
 
 def load_prices(tickers: list[str], years: int = 5) -> pd.DataFrame:
     """Daily adjusted close prices, one column per ticker, cached on disk for 6 hours.
-    Falls back gracefully to cached or synthetic data if Yahoo Finance is unreachable.
+    Falls back to a stale real cache if Yahoo Finance is unreachable, otherwise raises PriceDataUnavailable.
     """
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     hash_key = sum(map(ord, "".join(sorted(tickers))))
-    key = CACHE_DIR / f"prices_{years}y_{len(tickers)}_{hash_key}.pkl"
+    key = CACHE_DIR / f"real_prices_{years}y_{len(tickers)}_{hash_key}.pkl"
 
     # Check active cache
     if key.exists() and time.time() - key.stat().st_mtime < CACHE_TTL_SECONDS:
@@ -133,13 +137,8 @@ def load_prices(tickers: list[str], years: int = 5) -> pd.DataFrame:
         except Exception:
             pass
 
-    # Use offline synthetic price history
-    fallback = _generate_synthetic_prices(tickers, days=years * 252)
-    try:
-        fallback.to_pickle(key)
-    except Exception:
-        pass
-    return fallback
+    # No live download and no real cached history: refuse rather than invent prices
+    raise PriceDataUnavailable("Real market price history is unavailable right now (Yahoo Finance did not respond). Try again shortly.")
 
 
 # --------------------------------------------------------------------------- Statistics

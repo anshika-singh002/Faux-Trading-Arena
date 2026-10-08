@@ -1,7 +1,7 @@
 "use client";
 
 import { TrendingUp, TrendingDown, Minus } from "lucide-react";
-import { formatPercent } from "@/lib/mock-data";
+import { formatPercent } from "@/lib/format";
 
 interface PriceChangeProps {
   value: number;

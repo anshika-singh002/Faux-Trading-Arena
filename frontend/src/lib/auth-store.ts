@@ -2,7 +2,7 @@
 
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { apiLogin, apiRegister, apiLogout, setToken, clearToken, getToken } from "./api";
+import { apiLogin, apiRegister, apiLogout, apiDemoLogin, setToken, clearToken, getToken } from "./api";
 
 export interface AuthUser {
   id: string;
@@ -25,21 +25,12 @@ interface AuthState {
     email: string;
     password: string;
   }) => Promise<{ success: boolean; error?: string }>;
-  loginAsDemo: () => void;
+  loginAsDemo: () => Promise<{ success: boolean; error?: string }>;
+  setDisplayName: (displayName: string) => void;
   logout: () => Promise<void>;
   updateBalance: (balance: number) => void;
   hydrate: () => void;
 }
-
-// Demo account for the "Continue with demo account" button.
-const DEMO_USER: AuthUser = {
-  id: "demo",
-  username: "demo_trader",
-  displayName: "Demo Trader",
-  email: "demo@fauxtrading.app",
-  virtualBalance: 10000000,
-  rank: null,
-};
 
 export const useAuthStore = create<AuthState>()(
   persist(
@@ -104,10 +95,29 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
-      loginAsDemo: () => {
-        // Demo mode — no API call, hardcoded user, no token
-        set({ user: DEMO_USER, isAuthenticated: true, token: null });
+      // The demo account is a real server-side account, so every feature works with it
+      loginAsDemo: async () => {
+        try {
+          const res = await apiDemoLogin();
+          const user: AuthUser = {
+            id: res.user_id,
+            username: res.username,
+            displayName: res.display_name,
+            email: "demo@fauxtrading.app",
+            virtualBalance: res.virtual_balance,
+            rank: null,
+          };
+          setToken(res.access_token);
+          set({ user, isAuthenticated: true, token: res.access_token });
+          return { success: true };
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : "Could not start the demo account";
+          return { success: false, error: msg };
+        }
       },
+
+      setDisplayName: (displayName) =>
+        set((state) => ({ user: state.user ? { ...state.user, displayName } : null })),
 
       logout: async () => {
         await apiLogout();

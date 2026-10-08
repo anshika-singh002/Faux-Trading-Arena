@@ -8,10 +8,11 @@ import {
   AlertTriangle, Info, Plus, Minus, CheckCircle, Loader, Activity,
 } from "lucide-react";import { PriceChart } from "@/components/charts/PriceChart";
 import {
-  MOCK_QUOTES, MOCK_AI_INSIGHT_AAPL, XGBOOST_PREDICTIONS,
-  formatCurrency, formatPercent, formatVolume, formatNumber,
-} from "@/lib/mock-data";
-import { apiPlaceOrder, apiGetPortfolio, apiModel1PredictSymbol } from "@/lib/api";
+  formatCurrency, formatPercent, formatVolume,
+} from "@/lib/format";
+import { apiPlaceOrder, apiGetPortfolio, apiModel1PredictSymbol, apiGetRisk, type Model1Prediction, type RiskReport } from "@/lib/api";
+import { useLiveMarket } from "@/lib/live-market";
+import { useAssets } from "@/lib/assets";
 import { useAuthStore } from "@/lib/auth-store";
 
 function KeyStatRow({ label, value }: { label: string; value: string }) {
@@ -52,6 +53,7 @@ function ConfidenceBar({ score }: { score: number }) {
 
 // Trade panel component
 function TradePanel({ symbol, currentPrice }: { symbol: string; currentPrice: number }) {
+  const { quotes } = useLiveMarket();
   const { user, updateBalance } = useAuthStore();
   const [side, setSide]         = useState<"buy" | "sell">("buy");
   const [orderType, setOrderType] = useState<"market" | "limit">("market");
@@ -67,6 +69,8 @@ function TradePanel({ symbol, currentPrice }: { symbol: string; currentPrice: nu
   // AI signal for this stock
   const [aiDirection, setAiDirection] = useState<string | null>(null);
   const [aiWarningDismissed, setAiWarningDismissed] = useState(false);
+  // Rules-based risk report from the stock's real price history
+  const [risk, setRisk] = useState<RiskReport | null>(null);
 
   // Load live portfolio + AI prediction on mount
   useEffect(() => {
@@ -81,29 +85,30 @@ function TradePanel({ symbol, currentPrice }: { symbol: string; currentPrice: nu
     apiModel1PredictSymbol(symbol).then((r) => {
       setAiDirection(r.direction); // "UP" | "DOWN" | "NEUTRAL"
     }).catch(() => {});
+
+    // Rules-based risk check on the stock's real price history
+    apiGetRisk(symbol).then(setRisk).catch(() => setRisk(null));
   }, [symbol]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Show warning when buying a stock predicted to go DOWN
-  const showBuyWarning = side === "buy" && aiDirection === "DOWN" && !aiWarningDismissed;
-
-  // Show warning if stock is down today AND user is buying (any negative change)
-  const stockIsDownToday = (MOCK_QUOTES[symbol]?.changePercent ?? 0) < 0;
-  const showDayLossWarning = side === "buy" && stockIsDownToday && !aiWarningDismissed;
-
   // Show "best time to sell" if user holds this stock AND it's up today
-  const stockIsUpToday = (MOCK_QUOTES[symbol]?.changePercent ?? 0) > 0;
+  const stockIsUpToday = (quotes[symbol]?.changePercent ?? 0) > 0;
   const showSellHint = side === "sell" && liveQty > 0 && stockIsUpToday;
 
-  // Modal — intercept Review button for ANY losing stock buy (not just AI bearish)
+  // Warn before any buy that history says may lose money, or when the check could not run
+  const showBuyWarning = side === "buy" && (aiDirection === "DOWN" || risk?.level === "high");
+  const riskUnverified = risk === null || !risk.available;
   const [showRiskModal, setShowRiskModal] = useState(false);
-  const needsRiskWarning = side === "buy" && (showBuyWarning || showDayLossWarning);
 
-  function handleReviewClick() {
-    if (needsRiskWarning) {
-      setShowRiskModal(true);
-    } else {
-      setStep("confirm");
-    }
+  const warrants = (r: RiskReport | null) =>
+    aiDirection === "DOWN" || !r || !r.available || r.level === "medium" || r.level === "high";
+
+  async function handleReviewClick() {
+    if (side !== "buy" || aiWarningDismissed) { setStep("confirm"); return; }
+    // Re-check against the latest data right before the user commits
+    let latest = risk;
+    try { latest = await apiGetRisk(symbol); setRisk(latest); } catch { /* keep the last report */ }
+    if (warrants(latest)) setShowRiskModal(true);
+    else setStep("confirm");
   }
 
   const quantity = parseFloat(qty) || 0;
@@ -143,7 +148,7 @@ function TradePanel({ symbol, currentPrice }: { symbol: string; currentPrice: nu
   type TradeMsg = { icon: React.ReactNode; title: string; body: string; color: string; bg: string };
 
   function getTradeMessage(): TradeMsg {
-    const q = MOCK_QUOTES[symbol];
+    const q = quotes[symbol];
     const isStockUp   = (q?.changePercent ?? 0) > 0;
     const isStockDown = (q?.changePercent ?? 0) < 0;
 
@@ -453,7 +458,7 @@ function TradePanel({ symbol, currentPrice }: { symbol: string; currentPrice: nu
               Consider selling — stock is up today
             </div>
             <div style={{ fontSize: "0.75rem", color: "var(--color-text-2)", marginTop: 2 }}>
-              {symbol} is up {(MOCK_QUOTES[symbol]?.changePercent ?? 0).toFixed(2)}% today. You hold {liveQty} shares — a good moment to lock in gains.
+              {symbol} is up {(quotes[symbol]?.changePercent ?? 0).toFixed(2)}% today. You hold {liveQty} shares — a good moment to lock in gains.
             </div>
           </div>
         </div>
@@ -512,35 +517,57 @@ function TradePanel({ symbol, currentPrice }: { symbol: string; currentPrice: nu
               fontSize: "1.125rem", fontWeight: 700, textAlign: "center", marginBottom: "0.625rem",
               color: showBuyWarning ? "var(--color-negative)" : "var(--color-warning)",
             }}>
-              {showBuyWarning ? "High Risk — AI Signals Bearish" : "Caution — Stock Is Falling Today"}
+              {riskUnverified && aiDirection !== "DOWN"
+                ? "Risk could not be checked"
+                : risk?.kind === "overheated" && aiDirection !== "DOWN"
+                  ? "Gains may reverse. This stock has run up fast"
+                  : "You may lose money buying this stock now"}
             </h2>
 
             {/* Body */}
-            <p style={{ fontSize: "0.875rem", color: "var(--color-text-2)", textAlign: "center", lineHeight: 1.6, marginBottom: "1.25rem" }}>
-              {showBuyWarning
-                ? `XGBoost Model 1 has classified ${symbol} as BEARISH for the next 5 trading days. Buying now carries significant downside risk.`
-                : `${symbol} is down ${Math.abs(MOCK_QUOTES[symbol]?.changePercent ?? 0).toFixed(2)}% today. Buying a falling stock can amplify losses if the trend continues.`
-              }
+            <p style={{ fontSize: "0.875rem", color: "var(--color-text-2)", textAlign: "center", lineHeight: 1.6, marginBottom: "1rem" }}>
+              {riskUnverified
+                ? `Live price history for ${symbol} is not available right now, so its risk could not be assessed.`
+                : `Based on ${symbol}'s real price history, here is why this buy may end in a loss:`}
             </p>
+
+            {/* Reasons from the stock's real data */}
+            <ul style={{ listStyle: "none", padding: 0, margin: "0 0 1rem", display: "grid", gap: "0.5rem" }}>
+              {aiDirection === "DOWN" && (
+                <li style={{ fontSize: "0.8125rem", color: "var(--color-text-2)", lineHeight: 1.5, display: "flex", gap: 8 }}>
+                  <span style={{ color: "var(--color-negative)" }}>●</span>
+                  The XGBoost model signals DOWN for the next 5 trading days
+                </li>
+              )}
+              {(risk?.reasons ?? []).map((r) => (
+                <li key={r.text} style={{ fontSize: "0.8125rem", color: "var(--color-text-2)", lineHeight: 1.5, display: "flex", gap: 8 }}>
+                  <span style={{ color: r.severity === "high" ? "var(--color-negative)" : "var(--color-warning)" }}>●</span>
+                  {r.text}
+                </li>
+              ))}
+            </ul>
 
             {/* Stats row */}
             <div style={{
-              display: "grid", gridTemplateColumns: "1fr 1fr",
+              display: "grid", gridTemplateColumns: "1fr 1fr 1fr",
               gap: "0.75rem", marginBottom: "1.5rem",
               background: "var(--color-bg-elevated)", borderRadius: "var(--radius-md)", padding: "0.875rem",
             }}>
-              <div style={{ textAlign: "center" }}>
-                <div style={{ fontSize: "0.625rem", color: "var(--color-text-3)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>Today's change</div>
-                <div style={{ fontFamily: "var(--font-mono)", fontWeight: 700, fontSize: "1rem", color: "var(--color-negative)" }}>
-                  {(MOCK_QUOTES[symbol]?.changePercent ?? 0).toFixed(2)}%
+              {[
+                { label: "Today", v: risk?.stats.day_change_pct as number | undefined, suffix: "%" },
+                { label: "20 days", v: risk?.stats.return_20d_pct as number | undefined, suffix: "%" },
+                { label: "RSI (14)", v: risk?.stats.rsi14 as number | undefined, suffix: "" },
+              ].map((s) => (
+                <div key={s.label} style={{ textAlign: "center" }}>
+                  <div style={{ fontSize: "0.625rem", color: "var(--color-text-3)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>{s.label}</div>
+                  <div style={{
+                    fontFamily: "var(--font-mono)", fontWeight: 700, fontSize: "1rem",
+                    color: s.label === "RSI (14)" || s.v === undefined || s.v === null ? "var(--color-text)" : s.v < 0 ? "var(--color-negative)" : "var(--color-positive)",
+                  }}>
+                    {s.v === undefined || s.v === null ? "—" : `${s.v > 0 && s.label !== "RSI (14)" ? "+" : ""}${s.v.toFixed(s.label === "RSI (14)" ? 0 : 2)}${s.suffix}`}
+                  </div>
                 </div>
-              </div>
-              <div style={{ textAlign: "center" }}>
-                <div style={{ fontSize: "0.625rem", color: "var(--color-text-3)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>AI Signal</div>
-                <div style={{ fontFamily: "var(--font-mono)", fontWeight: 700, fontSize: "1rem", color: aiDirection === "DOWN" ? "var(--color-negative)" : aiDirection === "UP" ? "var(--color-positive)" : "var(--color-warning)" }}>
-                  {aiDirection ?? "—"}
-                </div>
-              </div>
+              ))}
             </div>
 
             {/* Buttons */}
@@ -565,7 +592,7 @@ function TradePanel({ symbol, currentPrice }: { symbol: string; currentPrice: nu
                   cursor: "pointer", fontFamily: "inherit",
                 }}
               >
-                I understand — proceed
+                Buy anyway
               </button>
             </div>
 
@@ -586,14 +613,32 @@ interface PageProps {
 
 export default function AssetDetailPage({ params }: PageProps) {
   const { symbol } = use(params);
-  const quote = MOCK_QUOTES[symbol];
+  const { quotes, status } = useLiveMarket();
+  const assets = useAssets();
+  const aiCovered = assets.find((a) => a.symbol === symbol)?.ai_supported ?? true;
+  const quote = quotes[symbol];
+  const [signal, setSignal] = useState<{ symbol: string; data: Model1Prediction } | null>(null);
+  const model1 = signal?.symbol === symbol ? signal.data : null;
+
+  // Real-time XGBoost signal computed from today's candles
+  useEffect(() => {
+    apiModel1PredictSymbol(symbol).then((data) => setSignal({ symbol, data })).catch(() => {});
+  }, [symbol]);
 
   if (!quote) {
     return (
       <div style={{ textAlign: "center", padding: "4rem 2rem" }}>
         <div style={{ fontSize: "3rem", marginBottom: "1rem" }}>📊</div>
-        <h2 style={{ marginBottom: "0.5rem" }}>Asset not found</h2>
-        <p style={{ color: "var(--color-text-3)" }}>No data for &ldquo;{symbol}&rdquo;</p>
+        <h2 style={{ marginBottom: "0.5rem" }}>
+          {status === "loading" ? "Loading live price…" : status === "offline" ? "Live price unavailable" : "Asset not found"}
+        </h2>
+        <p style={{ color: "var(--color-text-3)" }}>
+          {status === "loading"
+            ? `Fetching the latest market data for “${symbol}”`
+            : status === "offline"
+              ? "The market data feed is not responding. No prices are shown rather than made-up ones."
+              : `No data for “${symbol}”`}
+        </p>
         <Link href="/market" className="btn btn-ghost btn-sm" style={{ marginTop: "1rem", display: "inline-flex" }}>
           ← Back to Market
         </Link>
@@ -602,9 +647,16 @@ export default function AssetDetailPage({ params }: PageProps) {
   }
 
   const isPositive = quote.changePercent >= 0;
-  const insight = symbol === "AAPL" ? MOCK_AI_INSIGHT_AAPL : null;
   // XGBoost prediction for Indian stocks
-  const xgPred = XGBOOST_PREDICTIONS[symbol] ?? null;
+  const xgPred = model1
+    ? {
+        direction: model1.direction,
+        accuracy: model1.accuracy,
+        rocAuc: model1.roc_auc,
+        probabilityUp: model1.p_up,
+        probabilityDown: model1.p_down,
+      }
+    : null; // no stored snapshot: show the loading / unavailable state instead
 
   return (
     <div style={{ maxWidth: 1300, margin: "0 auto" }}>
@@ -651,7 +703,7 @@ export default function AssetDetailPage({ params }: PageProps) {
           <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
             <h1 style={{ fontSize: "1.5rem", fontFamily: "var(--font-mono)" }}>{symbol}</h1>
             <span style={{ fontSize: "0.8125rem", color: "var(--color-text-3)" }}>
-              NASDAQ · INR
+              NSE · INR
             </span>
           </div>
           <div style={{ display: "flex", alignItems: "baseline", gap: "0.75rem", flexWrap: "wrap" }}>
@@ -773,86 +825,6 @@ export default function AssetDetailPage({ params }: PageProps) {
                 Not investment advice. XGBoost model trained on historical technical indicators. For educational use only.
               </div>
             </div>
-          ) : insight ? (
-            <div
-              style={{
-                background: "var(--color-bg-elevated)",
-                border: "1px solid var(--color-border)",
-                borderRadius: "var(--radius-lg)",
-                padding: "1.25rem",
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1rem" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                  <Zap size={15} style={{ color: "var(--color-brand)" }} />
-                  <span style={{ fontSize: "0.875rem", fontWeight: 600 }}>AI Market Insight</span>
-                </div>
-                <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
-                  <span style={{ fontSize: "0.625rem", color: "var(--color-text-3)", background: "var(--color-surface-2)", padding: "2px 6px", borderRadius: 3 }}>
-                    MOCK DATA
-                  </span>
-                  <span style={{
-                    fontSize: "0.75rem",
-                    padding: "2px 8px",
-                    borderRadius: "var(--radius-full)",
-                    background: insight.direction === "bullish" ? "var(--color-positive-dim)" : insight.direction === "bearish" ? "var(--color-negative-dim)" : "var(--color-border)",
-                    color: insight.direction === "bullish" ? "var(--color-positive)" : insight.direction === "bearish" ? "var(--color-negative)" : "var(--color-text-3)",
-                    fontWeight: 600,
-                    textTransform: "capitalize",
-                  }}>
-                    {insight.direction}
-                  </span>
-                </div>
-              </div>
-
-              <p style={{ fontSize: "0.875rem", color: "var(--color-text-2)", marginBottom: "1rem" }}>
-                {insight.explanation}
-              </p>
-
-              <div style={{ marginBottom: "1rem" }}>
-                <div style={{ fontSize: "0.75rem", color: "var(--color-text-3)", marginBottom: 6 }}>
-                  Confidence — {insight.confidence.toUpperCase()}
-                </div>
-                <ConfidenceBar score={insight.confidenceScore} />
-              </div>
-
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
-                <div>
-                  <div style={{ fontSize: "0.75rem", color: "var(--color-text-3)", marginBottom: 6 }}>Key Factors</div>
-                  {insight.keyFactors.map((f, i) => (
-                    <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 6, fontSize: "0.8125rem", color: "var(--color-text-2)", marginBottom: 4 }}>
-                      <span style={{ color: "var(--color-positive)", flexShrink: 0, marginTop: 1 }}>↑</span>
-                      {f}
-                    </div>
-                  ))}
-                </div>
-                <div>
-                  <div style={{ fontSize: "0.75rem", color: "var(--color-text-3)", marginBottom: 6 }}>Risk Factors</div>
-                  {insight.riskFactors.map((f, i) => (
-                    <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 6, fontSize: "0.8125rem", color: "var(--color-text-2)", marginBottom: 4 }}>
-                      <span style={{ color: "var(--color-warning)", flexShrink: 0, marginTop: 1 }}>⚠</span>
-                      {f}
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div style={{ display: "flex", gap: "1.5rem", marginTop: "1rem", paddingTop: "0.875rem", borderTop: "1px solid var(--color-border-dim)" }}>
-                {[
-                  { label: "1-Day Target", value: formatCurrency(insight.predictedPriceShort) },
-                  { label: "1-Week Target", value: formatCurrency(insight.predictedPriceMedium) },
-                ].map(({ label, value }) => (
-                  <div key={label}>
-                    <div style={{ fontSize: "0.6875rem", color: "var(--color-text-3)", marginBottom: 2 }}>{label}</div>
-                    <div style={{ fontFamily: "var(--font-mono)", fontWeight: 700, color: "var(--color-text)" }}>{value}</div>
-                  </div>
-                ))}
-                <div style={{ marginLeft: "auto", fontSize: "0.6875rem", color: "var(--color-text-3)", display: "flex", alignItems: "center", gap: 4 }}>
-                  <Info size={11} />
-                  Not investment advice
-                </div>
-              </div>
-            </div>
           ) : (
             <div
               style={{
@@ -865,7 +837,7 @@ export default function AssetDetailPage({ params }: PageProps) {
             >
               <Zap size={24} style={{ color: "var(--color-text-3)", margin: "0 auto 0.75rem" }} />
               <div style={{ fontSize: "0.875rem", color: "var(--color-text-3)" }}>
-                AI insights not available for this asset.
+                {aiCovered ? "AI signal is loading or unavailable right now." : "No AI signal for this stock: the XGBoost models were trained on 10 specific stocks. Live prices and the risk check still apply."}
               </div>
             </div>
           )}

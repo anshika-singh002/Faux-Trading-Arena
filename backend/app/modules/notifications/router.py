@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc, update
 from pydantic import BaseModel
 from typing import Optional
+from datetime import datetime
 
 from app.core.database import get_db
 from app.core.security import get_current_user
@@ -19,7 +20,7 @@ class NotificationOut(BaseModel):
     message: str
     is_read: bool
     related_symbol: Optional[str]
-    created_at: str
+    created_at: datetime
 
     class Config:
         from_attributes = True

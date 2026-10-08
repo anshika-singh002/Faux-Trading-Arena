@@ -3,42 +3,48 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Search, Eye, TrendingUp, TrendingDown } from "lucide-react";
-import {
-  MOCK_ASSETS, MOCK_QUOTES, MOCK_INDICES, MOCK_WATCHLIST,
-  formatCurrency, formatVolume,
-} from "@/lib/mock-data";
+import { formatCurrency, formatVolume } from "@/lib/format";
+import { useAssets } from "@/lib/assets";
+import { useLiveMarket } from "@/lib/live-market";
+import { useWatchlist, toggleWatch } from "@/lib/watchlist";
+import { useAllRisk, riskLabel, riskColor } from "@/lib/risk";
 
-type SectorFilter = "All" | "Financial" | "Technology" | "Energy" | "Industrials" | "Consumer Staples" | "Communication";
-const SECTORS: SectorFilter[] = ["All", "Financial", "Technology", "Energy", "Industrials", "Consumer Staples", "Communication"];
+type SectorFilter = string;
 
-function formatChange(pct: number): string {
+function formatChange(pct: number | undefined): string {
+  if (pct == null) return "—";
   if (pct > 0) return `+${pct.toFixed(2)}%`;
   return `${pct.toFixed(2)}%`;
 }
 
 export default function MarketPage() {
+  const { quotes, indices, marketOpen } = useLiveMarket();
   const [search, setSearch] = useState("");
   const [sector, setSector] = useState<SectorFilter>("All");
 
-  const watchlistSymbols = new Set(MOCK_WATCHLIST.map((w) => w.symbol));
+  const assets = useAssets();
+  const sectors = ["All", ...Array.from(new Set(assets.map((a) => a.sector))).sort()];
+  const risk = useAllRisk();
+  const watchlist = useWatchlist();
+  const watchlistSymbols = new Set(watchlist);
 
-  const filtered = MOCK_ASSETS.filter((a) => {
+  const filtered = assets.filter((a) => {
     const q = search.toLowerCase();
     const matchesSearch = !q || a.symbol.toLowerCase().includes(q) || a.name.toLowerCase().includes(q);
-    const matchesSector = sector === "All" || (a.sector?.toLowerCase().includes(sector.toLowerCase()));
+    const matchesSector = sector === "All" || a.sector === sector;
     return matchesSearch && matchesSector;
   });
 
   // Quick summary counts
-  const gainers = MOCK_ASSETS.filter(a => (MOCK_QUOTES[a.symbol]?.changePercent ?? 0) > 0).length;
-  const losers  = MOCK_ASSETS.filter(a => (MOCK_QUOTES[a.symbol]?.changePercent ?? 0) < 0).length;
+  const gainers = assets.filter(a => (quotes[a.symbol]?.changePercent ?? 0) > 0).length;
+  const losers  = assets.filter(a => (quotes[a.symbol]?.changePercent ?? 0) < 0).length;
 
   return (
     <div style={{ maxWidth: 1200, margin: "0 auto" }}>
       <div style={{ marginBottom: "1.5rem" }}>
         <h1 style={{ fontSize: "1.5rem", fontWeight: 700, marginBottom: "0.25rem" }}>Market</h1>
         <p style={{ fontSize: "0.875rem", color: "var(--color-text-3)", margin: 0 }}>
-          NSE Indian stocks · Oct 7, 2026 ·{" "}
+          Nifty 50 stocks · {new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })} · {marketOpen === null ? "" : marketOpen ? "Market open" : "Market closed"} ·{" "}
           <span style={{ color: "var(--color-positive)", fontWeight: 600 }}>{gainers} up</span>
           {" / "}
           <span style={{ color: "var(--color-negative)", fontWeight: 600 }}>{losers} down</span>
@@ -47,7 +53,7 @@ export default function MarketPage() {
 
       {/* Index cards */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: "0.75rem", marginBottom: "1.75rem" }}>
-        {MOCK_INDICES.map((idx) => (
+        {indices.map((idx) => (
           <div key={idx.symbol} className="surface" style={{ borderRadius: "var(--radius-lg)", padding: "0.75rem 1rem" }}>
             <div style={{ fontSize: "0.6875rem", color: "var(--color-text-3)", marginBottom: 2 }}>{idx.name}</div>
             <div style={{ fontSize: "1rem", fontWeight: 700, fontFamily: "var(--font-mono)", color: "var(--color-text)" }}>
@@ -76,7 +82,7 @@ export default function MarketPage() {
             />
           </div>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            {SECTORS.map((s) => (
+            {sectors.map((s) => (
               <button key={s} onClick={() => setSector(s)} style={{
                 padding: "4px 12px", borderRadius: "var(--radius-full)", border: "1px solid",
                 borderColor: sector === s ? "var(--color-brand)" : "var(--color-border)",
@@ -103,12 +109,13 @@ export default function MarketPage() {
                 <th style={{ textAlign: "right" }}>Volume</th>
                 <th style={{ textAlign: "right" }}>Market Cap</th>
                 <th style={{ textAlign: "center" }}>52W Range</th>
+                <th style={{ textAlign: "center" }}>Risk</th>
                 <th style={{ textAlign: "center" }}>Action</th>
               </tr>
             </thead>
             <tbody>
               {filtered.map((asset, i) => {
-                const q = MOCK_QUOTES[asset.symbol];
+                const q = quotes[asset.symbol];
                 if (!q) return null;
                 const isWatched = watchlistSymbols.has(asset.symbol);
                 const isUp = q.changePercent >= 0;
@@ -154,7 +161,7 @@ export default function MarketPage() {
                         {formatChange(q.changePercent)}
                       </div>
                       <div style={{ fontSize: "0.6875rem", fontFamily: "var(--font-mono)", color: isUp ? "var(--color-positive)" : "var(--color-negative)" }}>
-                        {q.change > 0 ? "+" : ""}{q.change.toFixed(2)}
+                        {(q.change ?? 0) > 0 ? "+" : ""}{(q.change ?? 0).toFixed(2)}
                       </div>
                     </td>
                     <td style={{ textAlign: "right", color: "var(--color-text-2)", fontFamily: "var(--font-mono)", fontSize: "0.8125rem" }}>
@@ -183,8 +190,17 @@ export default function MarketPage() {
                       ) : "—"}
                     </td>
                     <td style={{ textAlign: "center" }}>
+                      <span
+                        title={risk[asset.symbol]?.reasons.map((r) => r.text).join("\n") || "No risk flags from recent price history"}
+                        style={{ fontSize: "0.6875rem", fontWeight: 700, color: riskColor(risk[asset.symbol]), whiteSpace: "nowrap" }}
+                      >
+                        {riskLabel(risk[asset.symbol])}
+                      </span>
+                    </td>
+                    <td style={{ textAlign: "center" }}>
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
                         <button
+                          onClick={() => toggleWatch(asset.symbol)}
                           style={{ background: "none", border: "none", cursor: "pointer", color: isWatched ? "var(--color-brand)" : "var(--color-text-3)", padding: 4 }}
                           title="Watchlist" aria-label="Toggle watchlist"
                         >
