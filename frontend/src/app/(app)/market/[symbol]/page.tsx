@@ -4,7 +4,7 @@ import { useState, useEffect, use } from "react";
 import Link from "next/link";
 import {
   ArrowLeft, TrendingUp, TrendingDown, Zap,
-  AlertTriangle, Info, Plus, Minus, CheckCircle, Loader,
+  AlertTriangle, Info, Plus, Minus, CheckCircle, Loader, Activity,
 } from "lucide-react";import { PriceChart } from "@/components/charts/PriceChart";
 import {
   MOCK_QUOTES, MOCK_AI_INSIGHT_AAPL, XGBOOST_PREDICTIONS,
@@ -93,6 +93,18 @@ function TradePanel({ symbol, currentPrice }: { symbol: string; currentPrice: nu
   const stockIsUpToday = (MOCK_QUOTES[symbol]?.changePercent ?? 0) > 0.5;
   const showSellHint = side === "sell" && liveQty > 0 && stockIsUpToday;
 
+  // Modal — intercept Review button for risky buys
+  const [showRiskModal, setShowRiskModal] = useState(false);
+  const needsRiskWarning = side === "buy" && (showBuyWarning || showDayLossWarning);
+
+  function handleReviewClick() {
+    if (needsRiskWarning) {
+      setShowRiskModal(true); // show modal first
+    } else {
+      setStep("confirm");
+    }
+  }
+
   const quantity = parseFloat(qty) || 0;
   const price = orderType === "market" ? currentPrice : parseFloat(limitPrice) || currentPrice;
   const total = quantity * price;
@@ -126,59 +138,58 @@ function TradePanel({ symbol, currentPrice }: { symbol: string; currentPrice: nu
     }
   }
 
-  // ── Smart feedback logic ──────────────────────────────────────────────────
-  // Determines what message to show after a trade based on context.
-  function getTradeMessage(): { emoji: string; title: string; body: string; color: string } {
+  // ── Smart feedback logic ─────────────────────────────────────────────────
+  type TradeMsg = { icon: React.ReactNode; title: string; body: string; color: string; bg: string };
+
+  function getTradeMessage(): TradeMsg {
     const q = MOCK_QUOTES[symbol];
     const isStockUp   = (q?.changePercent ?? 0) > 0;
     const isStockDown = (q?.changePercent ?? 0) < 0;
-    const hasBigProfit = liveQty === 0 && liveAvgCost > 0; // sold entire position
 
     if (side === "sell") {
       const sellPrice = parseFloat(qty) * currentPrice;
       const costBasis = parseFloat(qty) * liveAvgCost;
-      const profit = sellPrice - costBasis;
+      const profit    = sellPrice - costBasis;
       if (profit > 0) {
         return {
-          emoji: "🎉", color: "var(--color-positive)",
-          title: "Smart sell! You made a profit.",
-          body: `You locked in +${formatCurrency(profit)} on ${symbol}. Selling at the right time is just as important as buying.`,
-        };
-      } else {
-        return {
-          emoji: "📚", color: "var(--color-warning)",
-          title: "Sold at a loss — but that's a lesson.",
-          body: `Every loss teaches something. Review what happened with ${symbol} and apply it next time.`,
+          icon: <TrendingUp size={28} />, color: "var(--color-positive)", bg: "var(--color-positive-dim)",
+          title: "Smart sell — profit locked in.",
+          body: `You secured +${formatCurrency(profit)} on ${symbol}. Selling at the right time is half the skill.`,
         };
       }
+      return {
+        icon: <Info size={28} />, color: "var(--color-warning)", bg: "var(--color-warning-dim)",
+        title: "Sold at a loss — take note.",
+        body: `Review what happened with ${symbol}. Every trade, win or loss, is a data point.`,
+      };
     }
 
-    // Buy
+    // Buy cases
     if (isStockUp && aiDirection !== "DOWN") {
       return {
-        emoji: "💡", color: "var(--color-positive)",
-        title: "Good decision!",
-        body: `${symbol} is up today and the AI signal is positive. This looks like a well-timed entry.`,
+        icon: <CheckCircle size={28} />, color: "var(--color-positive)", bg: "var(--color-positive-dim)",
+        title: "Well-timed entry.",
+        body: `${symbol} is up today and the AI signal is positive. This looks like a good moment to buy.`,
       };
     }
     if (isStockDown && aiDirection === "DOWN") {
       return {
-        emoji: "⚠️", color: "var(--color-warning)",
-        title: "Bold move — watch this one closely.",
-        body: `${symbol} is down today and the AI also flags it bearish. Make sure you have a plan if it falls further.`,
+        icon: <AlertTriangle size={28} />, color: "var(--color-warning)", bg: "var(--color-warning-dim)",
+        title: "High-risk move — monitor closely.",
+        body: `${symbol} is down today and the AI flags it bearish. Have an exit plan ready if it falls further.`,
       };
     }
     if (isStockUp) {
       return {
-        emoji: "✅", color: "var(--color-positive)",
+        icon: <TrendingUp size={28} />, color: "var(--color-positive)", bg: "var(--color-positive-dim)",
         title: "Decent entry.",
-        body: `${symbol} is trending up today. Keep an eye on it and set a mental stop-loss.`,
+        body: `${symbol} is trending up today. Keep an eye on it and set a mental stop-loss level.`,
       };
     }
     return {
-      emoji: "🤔", color: "var(--color-text-2)",
+      icon: <Activity size={28} />, color: "var(--color-text-2)", bg: "var(--color-surface-2)",
       title: "Order placed.",
-      body: `You've added ${qty} shares of ${symbol} to your portfolio. Monitor it and stay patient.`,
+      body: `${qty} shares of ${symbol} added to your portfolio. Stay patient and track it regularly.`,
     };
   }
 
@@ -187,15 +198,14 @@ function TradePanel({ symbol, currentPrice }: { symbol: string; currentPrice: nu
     const msg = getTradeMessage();
     return (
       <div style={{ textAlign: "center", padding: "1.5rem 0" }}>
-        {/* Emoji feedback bubble */}
-        <div style={{ fontSize: "2.5rem", marginBottom: "0.75rem" }}>{msg.emoji}</div>
+        {/* Icon feedback */}
+        <div style={{ width: 56, height: 56, borderRadius: "50%", background: msg.bg, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 1rem", color: msg.color }}>
+          {msg.icon}
+        </div>
         <div style={{ fontWeight: 700, fontSize: "1rem", color: msg.color, marginBottom: 6 }}>
           {msg.title}
         </div>
-        <div style={{
-          fontSize: "0.8125rem", color: "var(--color-text-2)", lineHeight: 1.6,
-          marginBottom: "1rem", padding: "0 0.5rem",
-        }}>
+        <div style={{ fontSize: "0.8125rem", color: "var(--color-text-2)", lineHeight: 1.6, marginBottom: "1rem", padding: "0 0.5rem" }}>
           {msg.body}
         </div>
         <div style={{ background: "var(--color-bg-elevated)", borderRadius: "var(--radius-md)", padding: "0.75rem", marginBottom: "1.25rem", fontSize: "0.8125rem" }}>
@@ -246,7 +256,7 @@ function TradePanel({ symbol, currentPrice }: { symbol: string; currentPrice: nu
             <AlertTriangle size={15} style={{ color: "var(--color-negative)", flexShrink: 0, marginTop: 1 }} />
             <div>
               <div style={{ fontWeight: 700, fontSize: "0.875rem", color: "var(--color-negative)", marginBottom: 2 }}>
-                ⚠️ AI Model predicts this stock will go DOWN
+                AI Model predicts this stock will go DOWN
               </div>
               <div style={{ fontSize: "0.8125rem", color: "var(--color-text-2)", lineHeight: 1.5 }}>
                 The XGBoost Model 1 has classified <strong>{symbol}</strong> as <strong>BEARISH</strong> for the next 5 trading days. You can still proceed, but consider the risk.
@@ -429,72 +439,28 @@ function TradePanel({ symbol, currentPrice }: { symbol: string; currentPrice: nu
         </div>
       )}
 
-      {/* "Best time to sell" hint — stock is up today and user holds it */}
+      {/* Sell hint — stock is up and user holds it */}
       {showSellHint && (
         <div style={{
           background: "var(--color-positive-dim)", border: "1px solid var(--color-positive)",
           borderRadius: "var(--radius-md)", padding: "0.75rem 0.875rem", marginBottom: "0.75rem",
           display: "flex", gap: "0.5rem", alignItems: "flex-start",
         }}>
-          <span style={{ fontSize: "1.125rem", flexShrink: 0 }}>💰</span>
+          <TrendingUp size={15} style={{ color: "var(--color-positive)", flexShrink: 0, marginTop: 2 }} />
           <div>
             <div style={{ fontWeight: 700, fontSize: "0.8125rem", color: "var(--color-positive)" }}>
-              This could be a good time to sell!
+              Consider selling — stock is up today
             </div>
             <div style={{ fontSize: "0.75rem", color: "var(--color-text-2)", marginTop: 2 }}>
-              {symbol} is up {(MOCK_QUOTES[symbol]?.changePercent ?? 0).toFixed(2)}% today. You're currently holding {liveQty} shares. Selling now could lock in a profit.
+              {symbol} is up {(MOCK_QUOTES[symbol]?.changePercent ?? 0).toFixed(2)}% today. You hold {liveQty} shares — a good moment to lock in gains.
             </div>
           </div>
-        </div>
-      )}
-
-      {/* Risky buy warning — AI says DOWN */}
-      {showBuyWarning && (
-        <div style={{
-          background: "var(--color-negative-dim)", border: "1px solid var(--color-negative)",
-          borderRadius: "var(--radius-md)", padding: "0.75rem 0.875rem", marginBottom: "0.75rem",
-          display: "flex", gap: "0.5rem", alignItems: "flex-start",
-        }}>
-          <AlertTriangle size={14} style={{ color: "var(--color-negative)", flexShrink: 0, marginTop: 2 }} />
-          <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 700, fontSize: "0.8125rem", color: "var(--color-negative)" }}>
-              AI predicts this stock will go DOWN
-            </div>
-            <div style={{ fontSize: "0.75rem", color: "var(--color-text-2)", marginTop: 2 }}>
-              XGBoost Model 1 classifies <strong>{symbol}</strong> as <strong>BEARISH</strong> for the next 5 days.
-            </div>
-          </div>
-          <button onClick={() => setAiWarningDismissed(true)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-text-3)", fontSize: "0.75rem", flexShrink: 0, fontFamily: "inherit" }}>
-            Dismiss
-          </button>
-        </div>
-      )}
-
-      {/* Day loss warning — stock is down today */}
-      {showDayLossWarning && !showBuyWarning && (
-        <div style={{
-          background: "var(--color-warning-dim)", border: "1px solid var(--color-warning)",
-          borderRadius: "var(--radius-md)", padding: "0.75rem 0.875rem", marginBottom: "0.75rem",
-          display: "flex", gap: "0.5rem", alignItems: "flex-start",
-        }}>
-          <span style={{ fontSize: "1rem", flexShrink: 0 }}>⚠️</span>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 700, fontSize: "0.8125rem", color: "var(--color-warning)" }}>
-              This stock is down {Math.abs(MOCK_QUOTES[symbol]?.changePercent ?? 0).toFixed(2)}% today
-            </div>
-            <div style={{ fontSize: "0.75rem", color: "var(--color-text-2)", marginTop: 2 }}>
-              Buying a falling stock can be risky. Make sure this fits your strategy before proceeding.
-            </div>
-          </div>
-          <button onClick={() => setAiWarningDismissed(true)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-text-3)", fontSize: "0.75rem", flexShrink: 0, fontFamily: "inherit" }}>
-            OK
-          </button>
         </div>
       )}
 
       {/* Review button */}
       <button
-        onClick={() => setStep("confirm")}
+        onClick={handleReviewClick}
         disabled={!canProceed}
         style={{
           width: "100%", padding: "0.8125rem",
@@ -506,12 +472,106 @@ function TradePanel({ symbol, currentPrice }: { symbol: string; currentPrice: nu
             : "var(--color-border)",
           color: canProceed ? "#fff" : "var(--color-text-3)",
           transition: "all var(--transition-fast)",
-          fontFamily: "inherit",
-          letterSpacing: "0.03em",
+          fontFamily: "inherit", letterSpacing: "0.03em",
         }}
       >
         Review {side === "buy" ? "Buy" : "Sell"} →
       </button>
+
+      {/* ── Risk Warning Modal ── */}
+      {showRiskModal && (
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 9999,
+          background: "rgba(0,0,0,0.72)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          padding: "1rem",
+        }}>
+          <div style={{
+            background: "var(--color-surface)",
+            border: `1px solid ${showBuyWarning ? "var(--color-negative)" : "var(--color-warning)"}`,
+            borderTop: `4px solid ${showBuyWarning ? "var(--color-negative)" : "var(--color-warning)"}`,
+            borderRadius: "var(--radius-xl)",
+            padding: "2rem",
+            maxWidth: 420, width: "100%",
+            boxShadow: "var(--shadow-lg)",
+          }}>
+            {/* Icon */}
+            <div style={{
+              width: 52, height: 52, borderRadius: "50%", margin: "0 auto 1.25rem",
+              background: showBuyWarning ? "var(--color-negative-dim)" : "var(--color-warning-dim)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}>
+              <AlertTriangle size={26} style={{ color: showBuyWarning ? "var(--color-negative)" : "var(--color-warning)" }} />
+            </div>
+
+            {/* Title */}
+            <h2 style={{
+              fontSize: "1.125rem", fontWeight: 700, textAlign: "center", marginBottom: "0.625rem",
+              color: showBuyWarning ? "var(--color-negative)" : "var(--color-warning)",
+            }}>
+              {showBuyWarning ? "High Risk — AI Signals Bearish" : "Caution — Stock Is Falling Today"}
+            </h2>
+
+            {/* Body */}
+            <p style={{ fontSize: "0.875rem", color: "var(--color-text-2)", textAlign: "center", lineHeight: 1.6, marginBottom: "1.25rem" }}>
+              {showBuyWarning
+                ? `XGBoost Model 1 has classified ${symbol} as BEARISH for the next 5 trading days. Buying now carries significant downside risk.`
+                : `${symbol} is down ${Math.abs(MOCK_QUOTES[symbol]?.changePercent ?? 0).toFixed(2)}% today. Buying a falling stock can amplify losses if the trend continues.`
+              }
+            </p>
+
+            {/* Stats row */}
+            <div style={{
+              display: "grid", gridTemplateColumns: "1fr 1fr",
+              gap: "0.75rem", marginBottom: "1.5rem",
+              background: "var(--color-bg-elevated)", borderRadius: "var(--radius-md)", padding: "0.875rem",
+            }}>
+              <div style={{ textAlign: "center" }}>
+                <div style={{ fontSize: "0.625rem", color: "var(--color-text-3)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>Today's change</div>
+                <div style={{ fontFamily: "var(--font-mono)", fontWeight: 700, fontSize: "1rem", color: "var(--color-negative)" }}>
+                  {(MOCK_QUOTES[symbol]?.changePercent ?? 0).toFixed(2)}%
+                </div>
+              </div>
+              <div style={{ textAlign: "center" }}>
+                <div style={{ fontSize: "0.625rem", color: "var(--color-text-3)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>AI Signal</div>
+                <div style={{ fontFamily: "var(--font-mono)", fontWeight: 700, fontSize: "1rem", color: aiDirection === "DOWN" ? "var(--color-negative)" : "var(--color-warning)" }}>
+                  {aiDirection ?? "LOADING"}
+                </div>
+              </div>
+            </div>
+
+            {/* Buttons */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem" }}>
+              <button
+                onClick={() => setShowRiskModal(false)}
+                style={{
+                  padding: "0.75rem", borderRadius: "var(--radius-md)",
+                  border: "1px solid var(--color-border)", background: "none",
+                  color: "var(--color-text-2)", fontWeight: 600, fontSize: "0.875rem",
+                  cursor: "pointer", fontFamily: "inherit",
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => { setShowRiskModal(false); setAiWarningDismissed(true); setStep("confirm"); }}
+                style={{
+                  padding: "0.75rem", borderRadius: "var(--radius-md)", border: "none",
+                  background: showBuyWarning ? "var(--color-negative)" : "var(--color-warning)",
+                  color: "#fff", fontWeight: 700, fontSize: "0.875rem",
+                  cursor: "pointer", fontFamily: "inherit",
+                }}
+              >
+                I understand — proceed
+              </button>
+            </div>
+
+            <p style={{ fontSize: "0.6875rem", color: "var(--color-text-3)", textAlign: "center", marginTop: "1rem" }}>
+              Virtual funds only · No real money involved
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
