@@ -9,6 +9,7 @@ from app.modules.advisor.service import (
     PROFILES,
     RISK_PROFILES,
     MIN_AMOUNT,
+    PriceDataUnavailable,
     recommend,
 )
 
@@ -121,6 +122,8 @@ async def recommend_portfolio(
         return result
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
+    except PriceDataUnavailable as e:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e))
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -148,6 +151,8 @@ async def create_advisor_notification(
 
     try:
         result = recommend(amount=payload.amount, risk=risk_key)
+    except PriceDataUnavailable as e:
+        raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

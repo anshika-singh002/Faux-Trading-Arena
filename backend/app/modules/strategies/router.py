@@ -1,13 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, delete
 from pydantic import BaseModel
 from typing import Optional
+from datetime import datetime
 
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.user import User
-from app.models.strategy import Strategy
+from app.models.strategy import Strategy, Backtest
 
 router = APIRouter()
 
@@ -28,7 +29,7 @@ class StrategyOut(BaseModel):
     rules: list
     is_active: bool
     is_public: bool
-    created_at: str
+    created_at: datetime
 
     class Config:
         from_attributes = True
@@ -80,4 +81,6 @@ async def delete_strategy(
     strategy = result.scalar_one_or_none()
     if not strategy:
         raise HTTPException(status_code=404, detail="Strategy not found")
-    await db.delete(strategy)
+    # Backtests reference the strategy (NOT NULL foreign key), so they go first
+    await db.execute(delete(Backtest).where(Backtest.strategy_id == strategy_id))
+    await db.execute(delete(Strategy).where(Strategy.id == strategy_id))

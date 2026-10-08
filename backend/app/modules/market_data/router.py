@@ -1,15 +1,16 @@
 """
 Market data router.
-Currently returns simulated OHLCV data.
-When a real market data provider is integrated,
-replace the simulation functions with API calls.
+Serves live Yahoo Finance data (see live.py); the simulation in
+generate_ohlcv() is only a fallback when live data is unavailable.
 """
 # pyrefly: ignore [missing-import]
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from typing import Optional
 import math
 import time
+
+from app.modules.market_data import live, risk
 
 router = APIRouter()
 
@@ -98,38 +99,123 @@ async def get_ohlcv(
     symbol: str,
     range: str = Query("1M", pattern="^(1D|1W|1M|3M|6M|1Y|5Y)$"),
 ):
+    """Real candles from Yahoo Finance; simulated only when live data is unavailable."""
+    real = await live.get_ohlcv(symbol, range)
+    if real:
+        return [OHLCVPoint(**p) for p in real]
     return generate_ohlcv(symbol.upper(), range)
+
+
+_STATIC_INDICES = [
+    IndexSnapshot(name="NIFTY 50",    symbol="NIFTY",     value=22603.05, change=-173.35, change_percent=-0.76),
+    IndexSnapshot(name="SENSEX",      symbol="SENSEX",    value=72638.70, change=-432.18, change_percent=-0.59),
+    IndexSnapshot(name="NIFTY Bank",  symbol="BANKNIFTY", value=55055.55, change=-72.10,  change_percent=-0.13),
+    IndexSnapshot(name="NIFTY IT",    symbol="NIFTYIT",   value=27757.80, change=-377.80, change_percent=-1.34),
+    IndexSnapshot(name="India VIX",   symbol="INDIAVIX",  value=13.90,    change=0.29,    change_percent=2.13),
+    IndexSnapshot(name="USD/INR",     symbol="USDINR",    value=96.42,    change=0.15,    change_percent=0.16),
+]
+
+
+class QuoteOut(BaseModel):
+    symbol: str
+    price: float
+    change: float
+    change_percent: float
+    previous_close: Optional[float] = None
+    open: Optional[float] = None
+    high: Optional[float] = None
+    low: Optional[float] = None
+    volume: Optional[int] = None
+    avg_volume: Optional[int] = None
+    week52_high: Optional[float] = None
+    week52_low: Optional[float] = None
+    market_cap: Optional[float] = None
+    pe: Optional[float] = None
+    eps: Optional[float] = None
+    is_live: bool
 
 
 @router.get("/indices", response_model=list[IndexSnapshot])
 async def get_indices():
+    """Live index values only. An index with no live data is left out, never faked."""
+    out = []
+    for static in _STATIC_INDICES:
+        q = live.get_live_quote(static.symbol)
+        if q:
+            change = q["price"] - q["previous_close"]
+            pct = (change / q["previous_close"] * 100) if q["previous_close"] else 0.0
+            out.append(IndexSnapshot(
+                name=static.name, symbol=static.symbol,
+                value=round(q["price"], 2), change=round(change, 2),
+                change_percent=round(pct, 2),
+            ))
+    return out
+
+
+@router.get("/quotes", response_model=list[QuoteOut])
+async def get_quotes():
+    """Live quotes for the supported stocks. Stocks with no live data are left out, never faked."""
+    out = []
+    for symbol in live.STOCK_TICKERS:
+        full = live.get_full_quote(symbol)
+        if full:
+            out.append(QuoteOut(**full))
+    return out
+
+
+@router.get("/assets")
+async def get_assets():
+    """The tradable universe (Nifty 50 + ABCAPITAL), with sector and whether an AI model covers it."""
     return [
-        IndexSnapshot(name="NIFTY 50",    symbol="NIFTY",     value=22603.05, change=-173.35, change_percent=-0.76),
-        IndexSnapshot(name="SENSEX",      symbol="SENSEX",    value=72638.70, change=-432.18, change_percent=-0.59),
-        IndexSnapshot(name="NIFTY Bank",  symbol="BANKNIFTY", value=55055.55, change=-72.10,  change_percent=-0.13),
-        IndexSnapshot(name="NIFTY IT",    symbol="NIFTYIT",   value=27757.80, change=-377.80, change_percent=-1.34),
-        IndexSnapshot(name="India VIX",   symbol="INDIAVIX",  value=13.90,    change=0.29,    change_percent=2.13),
-        IndexSnapshot(name="USD/INR",     symbol="USDINR",    value=96.42,    change=0.15,    change_percent=0.16),
+        {"symbol": sym, "name": live.STOCK_NAMES[sym], "sector": live.STOCK_SECTORS[sym],
+         "ai_supported": sym in live.AI_SYMBOLS}
+        for sym in live.STOCK_TICKERS
     ]
+
+
+@router.get("/risk")
+async def get_all_risk():
+    """Risk report for every supported stock, from real price history."""
+    return [risk.assess(symbol) for symbol in live.STOCK_TICKERS]
+
+
+@router.get("/risk/{symbol}")
+async def get_symbol_risk(symbol: str):
+    """Why buying (or holding) this stock may lose money, with the numbers behind it."""
+    if symbol.upper() not in live.STOCK_TICKERS:
+        raise HTTPException(status_code=404, detail="Unsupported symbol")
+    return risk.assess(symbol)
+
+
+@router.get("/status")
+async def get_market_status():
+    """Whether the NSE regular session is currently open."""
+    return live.market_status()
+
+
+def _movers(positive: bool) -> list[dict]:
+    rows = []
+    for symbol in live.STOCK_TICKERS:
+        q = live.get_live_quote(symbol)
+        pct = live.day_change_percent(symbol)
+        if q is None or pct is None:
+            continue
+        if (pct > 0) == positive and pct != 0:
+            rows.append({
+                "symbol": symbol, "name": live.STOCK_NAMES[symbol],
+                "price": round(q["price"], 2), "change_percent": round(pct, 2),
+            })
+    rows.sort(key=lambda r: r["change_percent"], reverse=positive)
+    return rows[:5]
 
 
 @router.get("/movers/gainers")
 async def get_gainers():
-    return [
-        {"symbol": "AMD",  "name": "Advanced Micro Dev.", "price": 168.73, "change_percent": 1.52},
-        {"symbol": "NVDA", "name": "NVIDIA Corp.",        "price": 875.40, "change_percent": 1.50},
-        {"symbol": "NFLX", "name": "Netflix Inc.",        "price": 685.40, "change_percent": 0.78},
-        {"symbol": "BTC",  "name": "Bitcoin",             "price": 64820,  "change_percent": 1.68},
-        {"symbol": "AAPL", "name": "Apple Inc.",          "price": 192.53, "change_percent": 0.99},
-    ]
+    """Today's biggest gainers among the supported NSE stocks (live)."""
+    return _movers(True)
 
 
 @router.get("/movers/losers")
 async def get_losers():
-    return [
-        {"symbol": "TSLA", "name": "Tesla Inc.",        "price": 248.50, "change_percent": -2.24},
-        {"symbol": "DIS",  "name": "Walt Disney Co.",   "price": 111.42, "change_percent": -0.61},
-        {"symbol": "XOM",  "name": "Exxon Mobil Corp.", "price": 116.83, "change_percent": -0.40},
-        {"symbol": "JNJ",  "name": "Johnson & Johnson", "price": 152.47, "change_percent": -0.41},
-        {"symbol": "BA",   "name": "Boeing Co.",        "price": 185.60, "change_percent": -1.12},
-    ]
+    """Today's biggest losers among the supported NSE stocks (live)."""
+    return _movers(False)

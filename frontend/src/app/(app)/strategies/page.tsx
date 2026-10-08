@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Plus, TrendingUp, TrendingDown, ChevronDown,
-  Play, Pause, Edit2, FlaskConical
+  Trash2, FlaskConical
 } from "lucide-react";
 import Link from "next/link";
-import { MOCK_STRATEGIES, formatPercent, formatCurrency } from "@/lib/mock-data";
+import { useAssets } from "@/lib/assets";
+import { apiListStrategies, apiCreateStrategy, apiDeleteStrategy, type StrategyRow } from "@/lib/api";
 import type { ConditionIndicator, ConditionOperator, StrategyAction, PositionSizeType, StrategyRule } from "@/lib/types";
 
 const INDICATORS: { value: ConditionIndicator; label: string }[] = [
@@ -34,7 +35,7 @@ const OPERATORS: { value: ConditionOperator; label: string }[] = [
 const POS_SIZE_TYPES: { value: PositionSizeType; label: string }[] = [
   { value: "percent_portfolio", label: "% of portfolio" },
   { value: "percent_cash",      label: "% of cash" },
-  { value: "fixed_amount",      label: "fixed amount ($)" },
+  { value: "fixed_amount",      label: "fixed amount (₹)" },
 ];
 
 function RuleBuilder({
@@ -159,8 +160,8 @@ function RuleBuilder({
   );
 }
 
-function StrategyCard({ strategy }: { strategy: typeof MOCK_STRATEGIES[0] }) {
-  const perf = strategy.performance;
+function StrategyCard({ strategy, onDelete }: { strategy: StrategyRow; onDelete: () => void }) {
+  const rules = strategy.rules as unknown as StrategyRule[];
   return (
     <div
       className="surface"
@@ -172,19 +173,17 @@ function StrategyCard({ strategy }: { strategy: typeof MOCK_STRATEGIES[0] }) {
     >
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "0.75rem" }}>
         <div>
-          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: 4 }}>
-            <h3 style={{ fontSize: "0.9375rem" }}>{strategy.name}</h3>
-            {strategy.isActive && (
-              <span style={{ fontSize: "0.6875rem", color: "var(--color-positive)", background: "var(--color-positive-dim)", padding: "1px 6px", borderRadius: "var(--radius-full)", fontWeight: 600 }}>
-                ACTIVE
-              </span>
-            )}
-          </div>
-          <p style={{ fontSize: "0.8125rem", color: "var(--color-text-3)", margin: 0 }}>{strategy.description}</p>
+          <h3 style={{ fontSize: "0.9375rem", marginBottom: 4 }}>{strategy.name}</h3>
+          {strategy.description && (
+            <p style={{ fontSize: "0.8125rem", color: "var(--color-text-3)", margin: 0 }}>{strategy.description}</p>
+          )}
         </div>
         <div style={{ display: "flex", gap: "0.5rem" }}>
-          <button style={{ background: "none", border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", padding: "4px 10px", cursor: "pointer", color: "var(--color-text-2)", display: "flex", alignItems: "center", gap: 4, fontSize: "0.75rem" }}>
-            <Edit2 size={12} /> Edit
+          <button
+            onClick={onDelete}
+            style={{ background: "none", border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", padding: "4px 10px", cursor: "pointer", color: "var(--color-text-2)", display: "flex", alignItems: "center", gap: 4, fontSize: "0.75rem" }}
+          >
+            <Trash2 size={12} /> Delete
           </button>
           <Link href="/backtesting" style={{ background: "none", border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", padding: "4px 10px", cursor: "pointer", color: "var(--color-text-2)", display: "flex", alignItems: "center", gap: 4, fontSize: "0.75rem", textDecoration: "none" }}>
             <FlaskConical size={12} /> Backtest
@@ -199,14 +198,14 @@ function StrategyCard({ strategy }: { strategy: typeof MOCK_STRATEGIES[0] }) {
           </span>
         )}
         <span style={{ fontSize: "0.75rem", background: "var(--color-surface-2)", color: "var(--color-text-2)", padding: "2px 8px", borderRadius: 4 }}>
-          {strategy.rules.length} rule{strategy.rules.length !== 1 ? "s" : ""}
+          {rules.length} rule{rules.length !== 1 ? "s" : ""}
         </span>
       </div>
 
       {/* Rules preview */}
-      {strategy.rules.map((rule, i) => (
+      {rules.map((rule, i) => (
         <div
-          key={rule.id}
+          key={rule.id ?? i}
           style={{
             background: "var(--color-bg-elevated)",
             borderRadius: "var(--radius-md)",
@@ -220,8 +219,8 @@ function StrategyCard({ strategy }: { strategy: typeof MOCK_STRATEGIES[0] }) {
           }}
         >
           <span style={{ color: "var(--color-text-3)" }}>WHEN</span>
-          <span style={{ color: "var(--color-text)" }}>{rule.indicator.replace(/_/g, " ").toUpperCase()}</span>
-          <span style={{ color: "var(--color-text-3)" }}>{rule.operator.replace(/_/g, " ")}</span>
+          <span style={{ color: "var(--color-text)" }}>{String(rule.indicator).replace(/_/g, " ").toUpperCase()}</span>
+          <span style={{ color: "var(--color-text-3)" }}>{String(rule.operator).replace(/_/g, " ")}</span>
           <span style={{ color: "var(--color-text)" }}>
             {typeof rule.value === "string" ? rule.value.replace(/_/g, " ").toUpperCase() : rule.value}
           </span>
@@ -230,58 +229,90 @@ function StrategyCard({ strategy }: { strategy: typeof MOCK_STRATEGIES[0] }) {
             fontWeight: 700,
             color: rule.action === "buy" ? "var(--color-positive)" : "var(--color-negative)",
           }}>
-            {rule.action.toUpperCase()}
+            {String(rule.action).toUpperCase()}
           </span>
           <span style={{ color: "var(--color-text-3)" }}>
             {rule.positionSizeValue}{rule.positionSizeType === "fixed_amount" ? "₹" : "%"}
           </span>
         </div>
       ))}
-
-      {/* Performance */}
-      {perf && (
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(4, 1fr)",
-            gap: "0.75rem",
-            marginTop: "0.875rem",
-            paddingTop: "0.875rem",
-            borderTop: "1px solid var(--color-border-dim)",
-          }}
-        >
-          {[
-            { label: "Return", value: formatPercent(perf.totalReturnPercent), positive: perf.totalReturnPercent >= 0 },
-            { label: "Sharpe", value: perf.sharpeRatio.toFixed(2), positive: perf.sharpeRatio > 1 },
-            { label: "Max DD", value: formatPercent(perf.maxDrawdown), positive: false },
-            { label: "Win Rate", value: `${perf.winRate}%`, positive: perf.winRate >= 50 },
-          ].map(({ label, value, positive }) => (
-            <div key={label}>
-              <div style={{ fontSize: "0.6875rem", color: "var(--color-text-3)", marginBottom: 2 }}>{label}</div>
-              <div style={{ fontFamily: "var(--font-mono)", fontSize: "0.875rem", fontWeight: 600, color: positive ? "var(--color-positive)" : "var(--color-negative)" }}>
-                {value}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
 
+const DEFAULT_RULE = (): StrategyRule => ({
+  id: `r_${Date.now()}`,
+  indicator: "sma_50",
+  operator: "crosses_above",
+  value: "sma_200",
+  action: "buy",
+  positionSizeType: "percent_portfolio",
+  positionSizeValue: 100,
+});
+
 export default function StrategiesPage() {
   const [view, setView] = useState<"list" | "builder">("list");
-  const [newRules, setNewRules] = useState<StrategyRule[]>([
-    {
-      id: "new_r1",
-      indicator: "sma_50",
-      operator: "crosses_above",
-      value: "sma_200",
-      action: "buy",
-      positionSizeType: "percent_portfolio",
-      positionSizeValue: 100,
-    },
-  ]);
+  const [strategies, setStrategies] = useState<StrategyRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const [name, setName] = useState("");
+  const assets = useAssets();
+  const [pickedSymbol, setSymbol] = useState("");
+  const symbol = pickedSymbol || assets[0]?.symbol || "";
+  const [description, setDescription] = useState("");
+  const [newRules, setNewRules] = useState<StrategyRule[]>([DEFAULT_RULE()]);
+  const [saving, setSaving] = useState(false);
+
+  async function refresh() {
+    try {
+      setStrategies(await apiListStrategies());
+      setError("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not load strategies");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    apiListStrategies()
+      .then(setStrategies)
+      .catch((err) => setError(err instanceof Error ? err.message : "Could not load strategies"))
+      .finally(() => setLoading(false));
+  }, []);
+
+  async function handleSave() {
+    if (!name.trim()) { setError("Give your strategy a name."); return; }
+    if (newRules.length === 0) { setError("Add at least one rule."); return; }
+    setSaving(true);
+    setError("");
+    try {
+      await apiCreateStrategy({
+        name: name.trim(),
+        description: description.trim() || undefined,
+        symbol,
+        rules: newRules as unknown as Array<Record<string, unknown>>,
+      });
+      setName(""); setDescription(""); setNewRules([DEFAULT_RULE()]);
+      await refresh();
+      setView("list");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save the strategy");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete(id: string) {
+    if (!window.confirm("Delete this strategy?")) return;
+    try {
+      await apiDeleteStrategy(id);
+      setStrategies((prev) => prev.filter((s) => s.id !== id));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not delete the strategy");
+    }
+  }
 
   return (
     <div style={{ maxWidth: 1000, margin: "0 auto" }}>
@@ -289,7 +320,7 @@ export default function StrategiesPage() {
         <div>
           <h1 style={{ fontSize: "1.25rem", marginBottom: "0.25rem" }}>Strategies</h1>
           <p style={{ fontSize: "0.8125rem", color: "var(--color-text-3)" }}>
-            Build rule-based trading strategies and test them against historical data
+            Build rule-based trading strategies and test them against real historical prices
           </p>
         </div>
         <button
@@ -300,10 +331,19 @@ export default function StrategiesPage() {
         </button>
       </div>
 
+      {error && (
+        <div style={{ color: "var(--color-negative)", fontSize: "0.8125rem", marginBottom: "1rem" }}>{error}</div>
+      )}
+
       {view === "list" ? (
         <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-          {MOCK_STRATEGIES.map((s) => (
-            <StrategyCard key={s.id} strategy={s} />
+          {!loading && strategies.length === 0 && !error && (
+            <div style={{ textAlign: "center", padding: "3rem", color: "var(--color-text-3)", border: "1px dashed var(--color-border)", borderRadius: "var(--radius-lg)" }}>
+              No strategies yet. Click &ldquo;New Strategy&rdquo; to build one.
+            </div>
+          )}
+          {strategies.map((s) => (
+            <StrategyCard key={s.id} strategy={s} onDelete={() => handleDelete(s.id)} />
           ))}
         </div>
       ) : (
@@ -313,11 +353,13 @@ export default function StrategiesPage() {
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem", marginBottom: "1.25rem" }}>
             <div>
               <label style={{ fontSize: "0.75rem", color: "var(--color-text-3)", display: "block", marginBottom: 6 }}>Strategy Name</label>
-              <input className="input-base" placeholder="e.g. My MA Crossover" />
+              <input className="input-base" placeholder="e.g. My MA Crossover" value={name} onChange={(e) => setName(e.target.value)} />
             </div>
             <div>
               <label style={{ fontSize: "0.75rem", color: "var(--color-text-3)", display: "block", marginBottom: 6 }}>Asset Symbol</label>
-              <input className="input-base" placeholder="e.g. SBIN, TCS, INFY" />
+              <select className="input-base" value={symbol} onChange={(e) => setSymbol(e.target.value)} style={{ fontFamily: "inherit" }}>
+                {assets.map((a) => <option key={a.symbol} value={a.symbol}>{a.symbol} — {a.name}</option>)}
+              </select>
             </div>
           </div>
 
@@ -328,6 +370,8 @@ export default function StrategiesPage() {
               placeholder="Describe your strategy logic..."
               rows={2}
               style={{ resize: "vertical" }}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
             />
           </div>
 
@@ -372,10 +416,9 @@ export default function StrategiesPage() {
 
           <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.75rem", marginTop: "1.5rem" }}>
             <button onClick={() => setView("list")} className="btn btn-ghost">Cancel</button>
-            <Link href="/backtesting" className="btn btn-ghost btn-sm" style={{ display: "flex", alignItems: "center", gap: 4 }}>
-              <FlaskConical size={13} /> Backtest
-            </Link>
-            <button className="btn btn-primary">Save Strategy</button>
+            <button onClick={handleSave} disabled={saving} className="btn btn-primary">
+              {saving ? "Saving…" : "Save Strategy"}
+            </button>
           </div>
         </div>
       )}

@@ -1,43 +1,65 @@
 "use client";
 
-import { Shield } from "lucide-react";
-import { MOCK_LEADERBOARD, formatCurrency, formatPercent } from "@/lib/mock-data";
+import { useEffect, useState } from "react";
+import { formatCurrency, formatPercent } from "@/lib/format";
 import { useAuthStore } from "@/lib/auth-store";
+import { apiGetLeaderboard } from "@/lib/api";
+
+interface Entry {
+  rank: number;
+  username: string;
+  displayName: string;
+  portfolioValue: number;
+  totalReturn: number;
+  totalReturnPercent: number;
+  winRate: number;
+  totalTrades: number;
+  isCurrentUser: boolean;
+}
 
 export default function LeaderboardPage() {
-  const top3 = MOCK_LEADERBOARD.slice(0, 3);
-  const rest = MOCK_LEADERBOARD.slice(3);
   const { user } = useAuthStore();
+  const [entries, setEntries] = useState<Entry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    const load = () =>
+      apiGetLeaderboard()
+        .then((rows) => {
+          setEntries(rows.map((r) => ({
+            rank: r.rank, username: r.username, displayName: r.display_name,
+            portfolioValue: r.portfolio_value, totalReturn: r.total_return,
+            totalReturnPercent: r.total_return_percent, winRate: r.win_rate,
+            totalTrades: r.total_trades, isCurrentUser: r.is_current_user,
+          })));
+          setError("");
+        })
+        .catch((err) => setError(err instanceof Error ? err.message : "Could not load the leaderboard"))
+        .finally(() => setLoading(false));
+    load();
+    const id = setInterval(load, 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  const top3 = entries.slice(0, 3);
+  const rest = entries.slice(3);
 
   return (
     <div style={{ maxWidth: 900, margin: "0 auto" }}>
       <div style={{ marginBottom: "1.5rem" }}>
         <h1 style={{ fontSize: "1.25rem", marginBottom: "0.25rem" }}>Leaderboard</h1>
         <p style={{ fontSize: "0.8125rem", color: "var(--color-text-3)" }}>
-          Ranked by risk-adjusted performance. Raw returns alone don't determine placement.
+          Ranked by total portfolio return, with open positions valued at live market prices.
         </p>
       </div>
 
-      {/* Scoring note */}
-      <div
-        style={{
-          background: "var(--color-bg-elevated)",
-          border: "1px solid var(--color-border)",
-          borderRadius: "var(--radius-lg)",
-          padding: "0.875rem 1.25rem",
-          marginBottom: "1.5rem",
-          display: "flex",
-          alignItems: "center",
-          gap: "0.75rem",
-        }}
-      >
-        <Shield size={15} style={{ color: "var(--color-brand)", flexShrink: 0 }} />
-        <div style={{ fontSize: "0.8125rem", color: "var(--color-text-2)" }}>
-          <strong style={{ color: "var(--color-text)" }}>Risk-Aware Scoring:</strong>{" "}
-          Rankings weigh Sharpe ratio, win rate, and total return equally — not just raw P&L.
-          Making 50% with excessive risk scores lower than 30% with disciplined risk management.
-        </div>
-      </div>
+      {error && (
+        <div style={{ color: "var(--color-negative)", fontSize: "0.8125rem", marginBottom: "1rem" }}>{error}</div>
+      )}
+      {!loading && !error && entries.length === 0 && (
+        <div style={{ color: "var(--color-text-3)", fontSize: "0.875rem", marginBottom: "1rem" }}>No traders yet.</div>
+      )}
 
       {/* Top 3 podium */}
       <div
@@ -107,7 +129,7 @@ export default function LeaderboardPage() {
                   {formatPercent(entry.totalReturnPercent)}
                 </div>
                 <div style={{ fontSize: "0.6875rem", color: "var(--color-text-3)" }}>
-                  Sharpe: {entry.sharpeRatio.toFixed(2)}
+                  Win rate: {entry.winRate}%
                 </div>
               </div>
 
@@ -139,7 +161,6 @@ export default function LeaderboardPage() {
               <th>Trader</th>
               <th style={{ textAlign: "right" }}>Portfolio Value</th>
               <th style={{ textAlign: "right" }}>Total Return</th>
-              <th style={{ textAlign: "right" }}>Sharpe</th>
               <th style={{ textAlign: "right" }}>Win Rate</th>
               <th style={{ textAlign: "right" }}>Trades</th>
             </tr>
@@ -191,7 +212,6 @@ export default function LeaderboardPage() {
                             YOU
                           </span>
                         )}
-                        {entry.badge && <span>{entry.badge}</span>}
                       </div>
                       <div style={{ fontSize: "0.6875rem", color: "var(--color-text-3)" }}>@{entry.username}</div>
                     </div>
@@ -204,19 +224,9 @@ export default function LeaderboardPage() {
                   <div style={{ fontFamily: "var(--font-mono)", fontSize: "0.875rem", fontWeight: 600, color: "var(--color-positive)" }}>
                     {formatPercent(entry.totalReturnPercent)}
                   </div>
-                  <div style={{ fontSize: "0.6875rem", fontFamily: "var(--font-mono)", color: "var(--color-positive)" }}>
-                    +{formatCurrency(entry.totalReturn)}
+                  <div style={{ fontSize: "0.6875rem", fontFamily: "var(--font-mono)", color: entry.totalReturn >= 0 ? "var(--color-positive)" : "var(--color-negative)" }}>
+                    {entry.totalReturn >= 0 ? "+" : ""}{formatCurrency(entry.totalReturn)}
                   </div>
-                </td>
-                <td style={{ textAlign: "right" }}>
-                  <span style={{
-                    fontFamily: "var(--font-mono)",
-                    fontSize: "0.875rem",
-                    fontWeight: 600,
-                    color: entry.sharpeRatio >= 2 ? "var(--color-positive)" : entry.sharpeRatio >= 1 ? "var(--color-text)" : "var(--color-warning)",
-                  }}>
-                    {entry.sharpeRatio.toFixed(2)}
-                  </span>
                 </td>
                 <td style={{ textAlign: "right", fontFamily: "var(--font-mono)", fontSize: "0.875rem", color: entry.winRate >= 60 ? "var(--color-positive)" : "var(--color-text-2)" }}>
                   {entry.winRate}%

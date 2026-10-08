@@ -5,7 +5,7 @@ import {
   Send, Zap, RefreshCw, BookOpen, BarChart2,
   TrendingUp, AlertTriangle, Briefcase, MessageSquare
 } from "lucide-react";
-import { MOCK_COACH_CONVERSATION } from "@/lib/mock-data";
+import { apiCoachChat } from "@/lib/api";
 import type { CoachMessage } from "@/lib/types";
 
 // Suggested prompts
@@ -17,87 +17,6 @@ const SUGGESTIONS = [
   { icon: <BookOpen size={14} />, text: "Explain the Sharpe ratio" },
   { icon: <BarChart2 size={14} />, text: "What is the difference between ROI and CAGR?" },
 ];
-
-// Mock AI coach responses
-const MOCK_RESPONSES: Record<string, string> = {
-  default: `Great question! Let me break this down for you.
-
-As a trading simulator, we focus on helping you understand concepts through practice rather than prescribing what to buy or sell.
-
-The key principle here is that **risk management** comes before any strategy. Even the best setups can lose money if position sizing is wrong.
-
-A few things to consider:
-- Never risk more than 1-2% of your portfolio on a single trade
-- Understand the difference between volatility and risk
-- Track your trades systematically so you can identify patterns
-
-What aspect would you like to explore further?`,
-
-  rsi: `**RSI (Relative Strength Index)** is a momentum oscillator that measures the speed and change of price movements.
-
-**How it works:**
-RSI moves between 0 and 100. Traditionally:
-- **Above 70** → Potentially overbought (not necessarily a sell signal)
-- **Below 30** → Potentially oversold (not necessarily a buy signal)
-
-**The key misconception:** Most beginners treat RSI like an on/off switch. A stock can stay "overbought" for months in a strong uptrend.
-
-**Better uses for RSI:**
-1. **Divergence** — Price makes new high, RSI doesn't → potential weakness
-2. **Context** — In uptrends, 40-50 can act as support
-3. **Confirmation** — Use with price structure, not alone
-
-Try this: Look at SBIN or TCS on the market page. Switch to the candlestick view and observe how RSI aligns with actual price behavior.`,
-
-  portfolio: `Looking at your current portfolio, a few observations:
-
-**Concentration**
-Your financial sector exposure (SBIN, HDFCBANK, ICICIBANK, ABCAPITAL) represents ~23% of the portfolio. Your tech holdings (TCS, INFY) add another ~12%.
-
-**What this means in practice:**
-- A sector-wide sell-off in Indian banking could amplify losses across correlated positions
-- Diversifying into ITC (Consumer) and LT (Industrials) helps reduce this
-
-**Risk-adjusted perspective:**
-Your unrealized P&L is strong (+₹21,38,000). The key question: do you have a clear exit plan for each position?
-
-**Suggestions to explore:**
-- Review your largest position (ITC at 7.89% weight) — is conviction still high?
-- Use the Backtesting tool to stress-test different allocations
-- Check the XGBoost predictions on the AI Insights page for current signals
-
-Remember: **protecting gains is just as important as making them.**
-
-_This analysis uses mock data. In the real product, this would be powered by XGBoost portfolio risk analysis._`,
-
-  sharpe: `**The Sharpe Ratio** measures risk-adjusted return — how much return you're getting per unit of risk.
-
-**Formula:**
-\`Sharpe = (Portfolio Return - Risk-Free Rate) / Standard Deviation\`
-
-**What the numbers mean:**
-- **Below 1.0** → Not great — you're taking more risk than the return justifies
-- **1.0 - 2.0** → Good — solid risk-adjusted performance  
-- **Above 2.0** → Excellent — very efficient use of risk
-
-**Why it matters for you:**
-Looking at the leaderboard, notice how the top players aren't necessarily the ones with the highest raw returns — they have the best **risk-adjusted** returns.
-
-Someone with 35% return and Sharpe of 2.3 is a better trader than someone with 50% return and Sharpe of 0.8.
-
-**Limitation of Sharpe:**
-It treats upside and downside volatility equally. The Sortino ratio (which you'll see in backtests) fixes this by only penalizing **downside** volatility.
-
-Try running a backtest on any strategy — you'll see both metrics in the results.`,
-};
-
-function getMockResponse(message: string): string {
-  const lower = message.toLowerCase();
-  if (lower.includes("rsi") || lower.includes("relative strength")) return MOCK_RESPONSES.rsi;
-  if (lower.includes("portfolio") || lower.includes("risk") || lower.includes("allocation")) return MOCK_RESPONSES.portfolio;
-  if (lower.includes("sharpe") || lower.includes("ratio")) return MOCK_RESPONSES.sharpe;
-  return MOCK_RESPONSES.default;
-}
 
 function MessageBubble({ message }: { message: CoachMessage }) {
   const isUser = message.role === "user";
@@ -189,8 +108,17 @@ function MessageBubble({ message }: { message: CoachMessage }) {
   );
 }
 
+const WELCOME = (): CoachMessage => ({
+  id: "welcome",
+  role: "assistant",
+  content:
+    "Hi! I'm your trading coach. Ask about a stock (e.g. **How is TCS looking?**), your portfolio (**How is my portfolio?**), the market (**How is the market today?**), or a concept like RSI or the Sharpe ratio.\n\nStock, portfolio and market answers use live prices, your real holdings, and the XGBoost model.",
+  timestamp: new Date().toISOString(),
+});
+
 export default function CoachPage() {
-  const [messages, setMessages] = useState<CoachMessage[]>(MOCK_COACH_CONVERSATION);
+  const [messages, setMessages] = useState<CoachMessage[]>([WELCOME()]);
+  const [sources, setSources] = useState<string[]>([]);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -199,9 +127,9 @@ export default function CoachPage() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isTyping]);
 
-  function sendMessage(text?: string) {
+  async function sendMessage(text?: string) {
     const msg = text ?? input;
-    if (!msg.trim()) return;
+    if (!msg.trim() || isTyping) return;
 
     const userMsg: CoachMessage = {
       id: `m${Date.now()}`,
@@ -210,20 +138,27 @@ export default function CoachPage() {
       timestamp: new Date().toISOString(),
     };
 
+    const history = messages.filter((m) => m.id !== "welcome").map((m) => ({ role: m.role, content: m.content }));
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
     setIsTyping(true);
 
-    setTimeout(() => {
-      const response = getMockResponse(msg);
-      setIsTyping(false);
-      setMessages((prev) => [...prev, {
-        id: `m${Date.now() + 1}`,
-        role: "assistant",
-        content: response,
-        timestamp: new Date().toISOString(),
-      }]);
-    }, 1200 + Math.random() * 800);
+    let reply: string;
+    try {
+      const r = await apiCoachChat(msg, history);
+      reply = r.content;
+      setSources(r.is_mock ? [] : r.context_used);
+    } catch (err) {
+      reply = `Sorry, I couldn't reach the server (${err instanceof Error ? err.message : "unknown error"}). Please try again.`;
+      setSources([]);
+    }
+    setIsTyping(false);
+    setMessages((prev) => [...prev, {
+      id: `m${Date.now() + 1}`,
+      role: "assistant",
+      content: reply,
+      timestamp: new Date().toISOString(),
+    }]);
   }
 
   return (
@@ -234,7 +169,7 @@ export default function CoachPage() {
           <Zap size={18} style={{ color: "var(--color-brand)" }} />
           <h1 style={{ fontSize: "1.25rem" }}>AI Trading Coach</h1>
           <span style={{ fontSize: "0.625rem", background: "var(--color-surface-2)", color: "var(--color-text-3)", padding: "2px 6px", borderRadius: 3, marginLeft: 4 }}>
-            MOCK
+            {sources.length > 0 ? `LIVE: ${sources.join(" · ")}` : "LIVE DATA + EDUCATION"}
           </span>
         </div>
         <p style={{ fontSize: "0.8125rem", color: "var(--color-text-3)", margin: 0 }}>
@@ -389,7 +324,7 @@ export default function CoachPage() {
               The coach has context about your portfolio, recent trades, and any selected strategy.
             </div>
             <button
-              onClick={() => setMessages(MOCK_COACH_CONVERSATION)}
+              onClick={() => setMessages([WELCOME()])}
               style={{ display: "flex", alignItems: "center", gap: 4, marginTop: "0.625rem", background: "none", border: "none", cursor: "pointer", color: "var(--color-text-3)", fontSize: "0.75rem" }}
             >
               <RefreshCw size={11} /> Reset conversation
@@ -408,7 +343,7 @@ export default function CoachPage() {
             }}
           >
             <AlertTriangle size={11} style={{ marginBottom: 2, display: "inline", marginRight: 4 }} />
-            Mock AI responses for development. Not investment advice.
+            Answers use live market data and a statistical model. Educational only, not investment advice.
           </div>
         </div>
       </div>

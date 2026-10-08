@@ -6,8 +6,11 @@ Modular monolith. Each domain is a separate router/module.
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
+import asyncio
 
 from app.core.config import settings
+from app.modules.market_data import live as live_market
+from app.modules.trading import matcher as order_matcher
 from app.core.database import create_tables
 
 # Routers
@@ -30,8 +33,14 @@ from app.modules.advisor.router import router as advisor_router
 async def lifespan(app: FastAPI):
     # Startup
     await create_tables()
+    tasks = []
+    if settings.LIVE_MARKET_DATA:
+        tasks.append(asyncio.create_task(live_market.refresh_loop()))
+        tasks.append(asyncio.create_task(order_matcher.matcher_loop()))
     yield
     # Shutdown
+    for task in tasks:
+        task.cancel()
 
 
 app = FastAPI(

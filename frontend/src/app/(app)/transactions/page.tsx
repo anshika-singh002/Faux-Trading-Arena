@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { RefreshCw, ArrowUpRight, ArrowDownLeft } from "lucide-react";
-import { formatCurrency } from "@/lib/mock-data";
+import { formatCurrency } from "@/lib/format";
 import { apiGetTransactions, type TransactionOut } from "@/lib/api";
 import { useAuthStore } from "@/lib/auth-store";
 
@@ -12,14 +12,17 @@ export default function TransactionsPage() {
   const [txs, setTxs]       = useState<TransactionOut[]>([]);
   const [loading, setLoading] = useState(true);
 
-  async function load() {
+  async function load(initial = false) {
     if (!isAuthenticated) return;
-    setLoading(true);
+    if (!initial) setLoading(true);
     try { setTxs(await apiGetTransactions()); }
     catch { setTxs([]); }
     finally { setLoading(false); }
   }
-  useEffect(() => { load(); }, [isAuthenticated]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const id = setTimeout(() => load(), 0);
+    return () => clearTimeout(id);
+  }, [isAuthenticated]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const Sk = () => (
     <tr>
@@ -40,7 +43,7 @@ export default function TransactionsPage() {
           <h1 style={{ fontSize: "1.5rem", fontWeight: 700, marginBottom: "0.25rem" }}>Transactions</h1>
           <p style={{ fontSize: "0.875rem", color: "var(--color-text-3)", margin: 0 }}>Filled trade history</p>
         </div>
-        <button onClick={load} disabled={loading} style={{ background: "none", border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", padding: "0.4375rem 0.75rem", cursor: "pointer", color: "var(--color-text-3)", display: "flex", alignItems: "center", gap: 6, fontSize: "0.8125rem", fontFamily: "inherit", opacity: loading ? 0.5 : 1 }}>
+        <button onClick={() => load()} disabled={loading} style={{ background: "none", border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", padding: "0.4375rem 0.75rem", cursor: "pointer", color: "var(--color-text-3)", display: "flex", alignItems: "center", gap: 6, fontSize: "0.8125rem", fontFamily: "inherit", opacity: loading ? 0.5 : 1 }}>
           <RefreshCw size={13} style={{ animation: loading ? "spin 1s linear infinite" : "none" }} />
           Refresh
         </button>

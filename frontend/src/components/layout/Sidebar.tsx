@@ -8,7 +8,7 @@ import {
   MessageSquare, Trophy, User, BookMarked, LogOut, Newspaper, Compass,
 } from "lucide-react";
 import { useAuthStore } from "@/lib/auth-store";
-import { formatCurrency } from "@/lib/mock-data";
+import { formatCurrency } from "@/lib/format";
 
 interface NavItem {
   label: string;

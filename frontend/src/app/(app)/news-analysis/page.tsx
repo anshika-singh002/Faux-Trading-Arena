@@ -251,8 +251,6 @@ export default function NewsAnalysisPage() {
 
   const fetchNews = useCallback(async (sym: string) => {
     if (!isAuthenticated) return;
-    setLoading(true);
-    setError(false);
     try {
       if (sym === "all") {
         const data = await apiFetch<MarketNewsResponse>("/ai/news/market/top");
@@ -271,9 +269,14 @@ export default function NewsAnalysisPage() {
     }
   }, [isAuthenticated]);
 
-  useEffect(() => { fetchNews(activeSymbol); }, [fetchNews, activeSymbol]);
+  useEffect(() => {
+    const id = setTimeout(() => fetchNews(activeSymbol), 0);
+    return () => clearTimeout(id);
+  }, [fetchNews, activeSymbol]);
 
   const handleFilter = (sym: string) => {
+    setLoading(true);
+    setError(false);
     setActiveSymbol(sym);
     setSentimentFilter("all");
   };
@@ -320,7 +323,7 @@ export default function NewsAnalysisPage() {
           </p>
         </div>
         <button
-          onClick={() => fetchNews(activeSymbol)}
+          onClick={() => { setLoading(true); setError(false); fetchNews(activeSymbol); }}
           disabled={loading}
           style={{
             display: "flex", alignItems: "center", gap: "0.375rem",

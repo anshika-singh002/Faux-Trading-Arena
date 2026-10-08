@@ -5,7 +5,8 @@ import Link from "next/link";
 import {
   TrendingUp, TrendingDown, Minus, RefreshCw, Info, Cpu,
 } from "lucide-react";
-import { XGBOOST_PREDICTIONS, MOCK_QUOTES, formatCurrency } from "@/lib/mock-data";
+import { formatCurrency } from "@/lib/format";
+import { useLiveMarket } from "@/lib/live-market";
 import {
   apiPredict, apiModel1PredictAll,
   type PredictionResult, type Model1Prediction,
@@ -105,18 +106,19 @@ interface Card2 {
 // ─── Model 2 tab ──────────────────────────────────────────────────────────────
 
 function Model2Tab() {
+  const { quotes } = useLiveMarket();
   const [cards, setCards]   = useState<Card2[]>([]);
   const [loading, setLoading] = useState(true);
   const [liveCount, setLiveCount] = useState(0);
   const [fetched, setFetched] = useState<Date | null>(null);
 
-  async function fetch() {
-    setLoading(true);
+  async function fetch(initial = false) {
+    if (!initial) setLoading(true);
     const results: Card2[] = [];
     let live = 0;
     await Promise.all(SYMBOLS.map(async (sym) => {
       const meta = MODEL2_META[sym];
-      const basePrice = MOCK_QUOTES[sym]?.price ?? 0;
+      const basePrice = quotes[sym]?.price ?? 0;
       try {
         const r: PredictionResult = await apiPredict(sym);
         live++;
@@ -130,20 +132,17 @@ function Model2Tab() {
           priceCurrent: r.current_price, priceShort: r.predicted_price_short,
           accuracy: meta.accuracy, pBuy, pHold, pSell, isLive: !r.is_mock });
       } catch {
-        const stat = XGBOOST_PREDICTIONS[sym];
-        if (!stat) return;
-        const dir = stat.direction;
-        results.push({ symbol: sym, company: meta.company, direction: dir, score: stat.confidence,
-          priceCurrent: basePrice,
-          priceShort: dir==="UP" ? basePrice*1.025 : dir==="DOWN" ? basePrice*0.975 : basePrice,
-          accuracy: meta.accuracy, pUp: stat.probabilityUp, pDown: stat.probabilityDown, isLive: false });
+        return; // model unreachable: show nothing for this stock rather than a stored snapshot
       }
     }));
     results.sort((a, b) => b.score - a.score);
     setCards(results); setLiveCount(live); setFetched(new Date()); setLoading(false);
   }
 
-  useEffect(() => { fetch(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const id = setTimeout(() => fetch(), 0);
+    return () => clearTimeout(id);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div>
@@ -161,7 +160,7 @@ function Model2Tab() {
             </span>
           )}
           {fetched && <span style={{ fontSize: "0.6875rem", color: "var(--color-text-3)" }}>{fetched.toLocaleTimeString("en-IN")}</span>}
-          <button onClick={fetch} disabled={loading} style={{ background: "none", border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", padding: "0.375rem 0.75rem", cursor: "pointer", color: "var(--color-text-3)", display: "flex", alignItems: "center", gap: 5, fontSize: "0.8125rem", fontFamily: "inherit", opacity: loading ? 0.5 : 1 }}>
+          <button onClick={() => fetch()} disabled={loading} style={{ background: "none", border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", padding: "0.375rem 0.75rem", cursor: "pointer", color: "var(--color-text-3)", display: "flex", alignItems: "center", gap: 5, fontSize: "0.8125rem", fontFamily: "inherit", opacity: loading ? 0.5 : 1 }}>
             <RefreshCw size={12} style={{ animation: loading ? "spin 1s linear infinite" : "none" }} /> Refresh
           </button>
         </div>
@@ -257,8 +256,8 @@ function Model1Tab() {
   const [loading, setLoading] = useState(true);
   const [fetched, setFetched] = useState<Date | null>(null);
 
-  async function fetch() {
-    setLoading(true);
+  async function fetch(initial = false) {
+    if (!initial) setLoading(true);
     try {
       const r = await apiModel1PredictAll();
       setPreds(r.predictions);
@@ -268,7 +267,10 @@ function Model1Tab() {
     finally { setLoading(false); }
   }
 
-  useEffect(() => { fetch(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const id = setTimeout(() => fetch(), 0);
+    return () => clearTimeout(id);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const bullish = preds.filter(p => p.direction === "UP").length;
   const bearish = preds.filter(p => p.direction === "DOWN").length;
@@ -285,7 +287,7 @@ function Model1Tab() {
             <span style={{ fontSize: "0.75rem", color: "var(--color-positive)", background: "var(--color-positive-dim)", padding: "3px 10px", borderRadius: "var(--radius-full)", fontWeight: 600 }}>Live</span>
           )}
           {fetched && <span style={{ fontSize: "0.6875rem", color: "var(--color-text-3)" }}>{fetched.toLocaleTimeString("en-IN")}</span>}
-          <button onClick={fetch} disabled={loading} style={{ background: "none", border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", padding: "0.375rem 0.75rem", cursor: "pointer", color: "var(--color-text-3)", display: "flex", alignItems: "center", gap: 5, fontSize: "0.8125rem", fontFamily: "inherit", opacity: loading ? 0.5 : 1 }}>
+          <button onClick={() => fetch()} disabled={loading} style={{ background: "none", border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", padding: "0.375rem 0.75rem", cursor: "pointer", color: "var(--color-text-3)", display: "flex", alignItems: "center", gap: 5, fontSize: "0.8125rem", fontFamily: "inherit", opacity: loading ? 0.5 : 1 }}>
             <RefreshCw size={12} style={{ animation: loading ? "spin 1s linear infinite" : "none" }} /> Refresh
           </button>
         </div>

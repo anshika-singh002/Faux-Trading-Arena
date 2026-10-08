@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { generateOHLCV } from "@/lib/mock-data";
+import { apiGetOhlcv, type OhlcvPoint } from "@/lib/api";
 import type { TimeRange } from "@/lib/types";
 
 interface PriceChartProps {
@@ -35,15 +35,24 @@ export function PriceChart({
   const [activeRange, setActiveRange] = useState<TimeRange>("1M");
   const [chartType, setChartType] = useState<"area" | "candlestick">("area");
   const [crosshairPrice, setCrosshairPrice] = useState<number | null>(null);
+  const [noData, setNoData] = useState(false);
+  const requestId = useRef(0);
 
   const isPositive = changePercent >= 0;
 
-  const loadData = useCallback(() => {
+  const loadData = useCallback(async () => {
     const chart = chartRef.current;
     const mainSeries = mainSeriesRef.current;
     if (!chart || !mainSeries) return;
 
-    const data = generateOHLCV(symbol, activeRange);
+    // Real candles from the backend (Yahoo Finance); ignore out-of-order responses
+    const myRequest = ++requestId.current;
+    let data: OhlcvPoint[] = [];
+    try {
+      data = await apiGetOhlcv(symbol, activeRange);
+    } catch { /* leave the chart empty and say so below */ }
+    if (myRequest !== requestId.current || chartRef.current !== chart) return;
+    setNoData(data.length === 0);
     if (data.length === 0) return;
 
     if (chartType === "candlestick") {
@@ -77,6 +86,15 @@ export function PriceChart({
 
     chart.timeScale().fitContent();
   }, [symbol, activeRange, chartType, showVolume]);
+
+  const loadDataRef = useRef<() => void>(() => {});
+  useEffect(() => { loadDataRef.current = loadData; }, [loadData]);
+
+  // Keep the chart fresh while the page is open
+  useEffect(() => {
+    const id = setInterval(() => loadDataRef.current(), 60_000);
+    return () => clearInterval(id);
+  }, []);
 
   // Init chart (runs once)
   useEffect(() => {
@@ -214,22 +232,8 @@ export function PriceChart({
       });
       ro.observe(containerRef.current);
 
-      // Load initial data
-      const ohlcv = generateOHLCV(symbol, "1M");
-      if (chartType === "area") {
-        mainSeries.setData(ohlcv.map((d) => ({ time: d.time, value: d.close })));
-      } else {
-        mainSeries.setData(ohlcv);
-      }
-      if (showVolume && volumeSeriesRef.current) {
-        volumeSeriesRef.current.setData(
-          ohlcv.map((d) => ({
-            time: d.time, value: d.volume,
-            color: d.close >= d.open ? "rgba(38,194,129,0.4)" : "rgba(224,82,82,0.4)",
-          }))
-        );
-      }
-      chart.timeScale().fitContent();
+      // Load real data now that the series exist
+      loadDataRef.current();
 
       return () => {
         mounted = false;
@@ -252,6 +256,11 @@ export function PriceChart({
 
   return (
     <div style={{ position: "relative" }}>
+      {noData && (
+        <div style={{ position: "absolute", inset: 0, zIndex: 2, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--color-text-3)", fontSize: "0.875rem", pointerEvents: "none" }}>
+          Price history unavailable right now
+        </div>
+      )}
       {showControls && (
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.75rem", flexWrap: "wrap", gap: "0.5rem" }}>
           {/* Range buttons */}

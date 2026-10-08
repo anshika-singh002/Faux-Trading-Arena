@@ -3,15 +3,21 @@ Portfolio router — all P&L calculated server-side from database state.
 """
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, delete
 from pydantic import BaseModel
 from typing import Optional
 
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.user import User
+from app.models.order import Order, Transaction
 from app.models.position import Position
-from app.modules.market_data.router import MOCK_BASE_PRICES
+from app.modules.market_data.live import get_price, STOCK_SECTORS
+
+
+def get_sector(symbol: str) -> str:
+    return STOCK_SECTORS.get(symbol, "Other")
 
 router = APIRouter()
 
@@ -57,7 +63,7 @@ async def get_portfolio(
     total_realized_pnl = 0.0
 
     for p in positions:
-        current_price = MOCK_BASE_PRICES.get(p.symbol, p.avg_cost)
+        current_price = get_price(p.symbol, p.avg_cost)
         market_value = p.quantity * current_price
         unrealized_pnl = market_value - p.cost_basis
         unrealized_pnl_pct = (unrealized_pnl / p.cost_basis * 100) if p.cost_basis > 0 else 0
@@ -81,7 +87,7 @@ async def get_portfolio(
         ))
 
     total_value = current_user.virtual_balance + total_market_value
-    initial_balance = 100_000.0  # from config ideally
+    initial_balance = settings.INITIAL_VIRTUAL_BALANCE
 
     # Calculate weights
     if total_value > 0:
@@ -103,21 +109,32 @@ async def get_portfolio(
     )
 
 
+@router.post("/reset")
+async def reset_portfolio(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Wipe positions, orders and transactions and restore the starting balance."""
+    from app.modules.trading.locks import user_lock
+
+    async with user_lock(current_user.id):
+        for model in (Position, Transaction, Order):
+            await db.execute(delete(model).where(model.user_id == current_user.id))
+        current_user.virtual_balance = settings.INITIAL_VIRTUAL_BALANCE
+        await db.commit()
+    return {"virtual_balance": current_user.virtual_balance}
+
+
 # ── Risky stocks analysis ─────────────────────────────────────────────────────
 
-# Volatility thresholds — annualised vol > these = high risk
-_HIGH_VOL: dict[str, float] = {
-    "SBIN": 0.28, "RELIANCE": 0.25, "HDFCBANK": 0.24,
-    "ABCAPITAL": 0.38, "ICICIBANK": 0.30, "INFY": 0.27,
-    "TCS": 0.24, "ITC": 0.22, "LT": 0.26, "BHARTIARTL": 0.28,
-}
+def _real_volatility(symbol: str):
+    """Annualised volatility of the last 60 sessions from real prices, or None if unavailable."""
+    from app.modules.market_data import live
 
-# Sector map for concentration check
-_SECTOR: dict[str, str] = {
-    "SBIN": "Banking", "HDFCBANK": "Banking", "ICICIBANK": "Banking", "ABCAPITAL": "NBFC",
-    "INFY": "IT", "TCS": "IT",
-    "RELIANCE": "Energy", "ITC": "FMCG", "LT": "Infra", "BHARTIARTL": "Telecom",
-}
+    df = live.get_daily(symbol)
+    if df is None or len(df) < 30:
+        return None
+    return float(df["close"].pct_change().dropna().tail(60).std() * (252 ** 0.5))
 
 
 class RiskyPositionOut(BaseModel):
@@ -163,7 +180,7 @@ async def get_portfolio_risk(
 
     # Compute total portfolio value for weight calc
     total_market = sum(
-        p.quantity * MOCK_BASE_PRICES.get(p.symbol, p.avg_cost)
+        p.quantity * get_price(p.symbol, p.avg_cost)
         for p in positions
     )
     total_value = current_user.virtual_balance + total_market
@@ -173,10 +190,10 @@ async def get_portfolio_risk(
     # Sector concentration
     sector_weights: dict[str, float] = {}
     for p in positions:
-        price = MOCK_BASE_PRICES.get(p.symbol, p.avg_cost)
+        price = get_price(p.symbol, p.avg_cost)
         mv = p.quantity * price
         weight = (mv / total_value * 100) if total_value > 0 else 0
-        sector = _SECTOR.get(p.symbol, "Other")
+        sector = get_sector(p.symbol)
         sector_weights[sector] = sector_weights.get(sector, 0) + weight
 
     for sector, sw in sector_weights.items():
@@ -185,7 +202,7 @@ async def get_portfolio_risk(
 
     # Per-position checks
     for p in positions:
-        price = MOCK_BASE_PRICES.get(p.symbol, p.avg_cost)
+        price = get_price(p.symbol, p.avg_cost)
         mv = p.quantity * price
         weight = (mv / total_value * 100) if total_value > 0 else 0
         cost = p.cost_basis if p.cost_basis > 0 else p.avg_cost * p.quantity
@@ -212,9 +229,9 @@ async def get_portfolio_risk(
                 risk_level = "medium"
 
         # High volatility stock
-        vol_thr = _HIGH_VOL.get(p.symbol)
-        if vol_thr and vol_thr > 0.30:
-            reasons.append(f"High-volatility stock (est. {int(vol_thr*100)}% annual vol)")
+        vol = _real_volatility(p.symbol)
+        if vol and vol > 0.40:
+            reasons.append(f"High-volatility stock ({int(vol*100)}% annualised, last 60 sessions)")
             if risk_level == "low":
                 risk_level = "medium"
 

@@ -130,6 +130,25 @@ def generate_candle_series(symbol: str, current_price: Optional[float] = None, p
     return pd.DataFrame(rows)
 
 
+def live_model_frames(symbol: str) -> Optional[dict[str, pd.DataFrame]]:
+    """
+    Real daily candles for a stock plus NIFTY / BANKNIFTY / VIX, aligned to the
+    stock's trading days and reset to a positional index (what the feature
+    builders expect). Returns None when live data isn't available yet.
+    """
+    from app.modules.market_data.live import get_model_inputs
+
+    raw = get_model_inputs(symbol)
+    if raw is None:
+        return None
+    stock = raw["stock"]
+    out = {"stock": stock.reset_index(drop=True)}
+    for key in ("nifty", "bank", "vix"):
+        aligned = raw[key].reindex(stock.index.union(raw[key].index)).ffill().reindex(stock.index).bfill()
+        out[key] = aligned.reset_index(drop=True)
+    return out
+
+
 def compute_model2_features(
     df_stock: pd.DataFrame,
     df_nifty: pd.DataFrame,
@@ -423,11 +442,13 @@ class XGBoostAIService(AIService):
         model = self._models[sym]
 
         try:
-            # 1. Generate / retrieve historical candles for stock, benchmarks, and VIX
-            df_stock = generate_candle_series(sym, current_price=current_price, points=252)
-            df_nifty = generate_candle_series("NIFTY", current_price=DEFAULT_BASE_PRICES["NIFTY"], points=252)
-            df_bank  = generate_candle_series("BANKNIFTY", current_price=DEFAULT_BASE_PRICES["BANKNIFTY"], points=252)
-            df_vix   = generate_candle_series("VIX", current_price=DEFAULT_BASE_PRICES["VIX"], points=252, vol=0.05)
+            # 1. Real daily candles (Yahoo Finance) for stock, benchmarks, and VIX
+            frames = live_model_frames(sym)
+            if frames is None:
+                # No real candles yet: report honestly via the (flagged) mock service
+                return await self._fallback.get_prediction(symbol, current_price)
+            df_stock, df_nifty = frames["stock"], frames["nifty"]
+            df_bank, df_vix = frames["bank"], frames["vix"]
 
             # 2. Compute 67 technical features
             feats_df, tech_summary = compute_model2_features(
@@ -835,23 +856,62 @@ class Model1Service:
             generated_at=datetime.now(timezone.utc).isoformat(),
         )
 
+    def _live_predict(self, symbol: str, current_price: float) -> Optional[Model1PredictionResult]:
+        """Run the XGBoost model on today's real candles. None if not possible."""
+        if self._model is None:
+            return None
+        sym = symbol.upper()
+        company = self._SYMBOL_TO_NAME.get(sym, sym)
+        code = self._codes.get(company)
+        frames = live_model_frames(sym)
+        if code is None or frames is None:
+            return None
+        try:
+            feats = compute_model1_features(
+                frames["stock"], frames["nifty"], frames["bank"], frames["vix"],
+                code, self._features,
+            )
+            probs = self._model.predict_proba(feats)[0]
+            classes = list(getattr(self._model, "classes_", [0, 1]))
+            p_up = float(probs[classes.index(1)])
+        except Exception:
+            logger.exception("Model 1 live inference failed for %s", sym)
+            return None
+
+        p_down = 1.0 - p_up
+        up_thr = float(self._config.get("UP_threshold", 0.55))
+        down_thr = float(self._config.get("DOWN_threshold", 0.45))
+        direction = "UP" if p_up >= up_thr else "DOWN" if p_up <= down_thr else "NEUTRAL"
+        if direction == "UP":
+            predicted = current_price * (1 + p_up * 0.06)
+        elif direction == "DOWN":
+            predicted = current_price * (1 - p_down * 0.06)
+        else:
+            predicted = current_price * (1 + (p_up - 0.5) * 0.02)
+        acc, bal_acc, auc = self._perf_for(company)
+        return Model1PredictionResult(
+            symbol=sym, company=company, current_price=current_price,
+            p_up=p_up, p_down=p_down, direction=direction, confidence=abs(p_up - p_down),
+            accuracy=acc, balanced_accuracy=bal_acc, roc_auc=auc,
+            predicted_price=predicted, is_live=True,
+            generated_at=datetime.now(timezone.utc).isoformat(),
+        )
+
     def predict(self, symbol: str, current_price: float) -> Model1PredictionResult:
         """
         Return Model 1 prediction.
 
-        Strategy:
-        - PRIMARY: use final_predictions.csv (real trained model output on actual historical data)
-        - SECONDARY: live inference on synthetic candles is SKIPPED because synthetic candle data
-          always produces bullish-biased features (trending sine waves), making all stocks
-          appear as BUY. The CSV contains the genuine test-set predictions.
-        - Predicted price is derived from the CSV probability and current price.
+        PRIMARY: run the trained model on today's real candles (is_live=True).
+        FALLBACK: the stored test-set predictions in final_predictions.csv
+        (is_live=False) when the model can't load or live candles aren't ready.
         """
         self._load()
-        company = self._SYMBOL_TO_NAME.get(symbol.upper(), symbol)
-        acc, bal_acc, auc = self._perf_for(company)
-
-        # Always serve from CSV — these are the real model predictions
-        return self._fallback(symbol, current_price)
+        result = self._live_predict(symbol, current_price)
+        if result is not None:
+            return result
+        fallback = self._fallback(symbol, current_price)
+        fallback.is_live = False
+        return fallback
 
 
 # Singleton — loaded once

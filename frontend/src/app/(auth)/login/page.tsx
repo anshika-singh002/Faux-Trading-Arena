@@ -31,9 +31,16 @@ export default function LoginPage() {
     }
   }
 
-  function handleDemo() {
-    loginAsDemo();
-    router.push("/dashboard");
+  async function handleDemo() {
+    setError("");
+    setLoading(true);
+    const result = await loginAsDemo();
+    if (result.success) {
+      router.push("/dashboard");
+    } else {
+      setError(result.error ?? "Could not start the demo account. Is the backend running?");
+      setLoading(false);
+    }
   }
 
   return (
@@ -70,7 +77,7 @@ export default function LoginPage() {
             <span style={{ color: "var(--color-brand)" }}>Zero risk.</span>
           </div>
           <p style={{ fontSize: "0.875rem", color: "var(--color-text-3)", lineHeight: 1.7 }}>
-            Practice trading with ₹84 lakh in virtual funds. Build strategies, backtest them, get AI insights.
+            Practice trading with ₹1 crore in virtual funds. Build strategies, backtest them, get AI insights.
           </p>
         </div>
         <div style={{ fontSize: "0.75rem", color: "var(--color-text-3)" }}>

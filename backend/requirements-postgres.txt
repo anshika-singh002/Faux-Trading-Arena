@@ -1,0 +1,4 @@
+# Extra drivers needed only when DATABASE_URL points at PostgreSQL (e.g. docker-compose).
+-r requirements.txt
+asyncpg==0.31.0
+psycopg2-binary==2.9.9

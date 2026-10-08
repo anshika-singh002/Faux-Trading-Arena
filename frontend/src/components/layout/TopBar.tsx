@@ -4,24 +4,31 @@ import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Search, Bell, X, TrendingUp, TrendingDown } from "lucide-react";
-import { MOCK_ASSETS, MOCK_QUOTES, MOCK_NOTIFICATIONS, formatCurrency } from "@/lib/mock-data";
+import { formatCurrency } from "@/lib/format";
+import { useAssets, searchAssets } from "@/lib/assets";
+import { useLiveMarket } from "@/lib/live-market";
+import { useAuthStore } from "@/lib/auth-store";
+import {
+  apiGetNotifications, apiMarkNotificationRead, apiMarkAllNotificationsRead,
+  type NotificationOut,
+} from "@/lib/api";
 
 // ─── Search Modal ────────────────────────────────────────────
 
 function SearchModal({ onClose }: { onClose: () => void }) {
   const [query, setQuery] = useState("");
+  const { quotes } = useLiveMarket();
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { inputRef.current?.focus(); }, []);
 
-  const results = query.length > 0
-    ? MOCK_ASSETS.filter(
-        (a) =>
-          a.symbol.toLowerCase().includes(query.toLowerCase()) ||
-          a.name.toLowerCase().includes(query.toLowerCase())
-      ).slice(0, 8)
-    : MOCK_ASSETS.slice(0, 6);
+  const assets = useAssets();
+  const [active, setActive] = useState(0);
+  const POPULAR = ["RELIANCE", "TCS", "HDFCBANK", "INFY", "ICICIBANK", "SBIN"];
+  const results = query.trim()
+    ? searchAssets(assets, query)
+    : POPULAR.map((s) => assets.find((a) => a.symbol === s)).filter((a): a is NonNullable<typeof a> => !!a);
 
   return (
     <div
@@ -49,16 +56,18 @@ function SearchModal({ onClose }: { onClose: () => void }) {
           <input
             ref={inputRef}
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search stocks, ETFs, crypto…"
+            onChange={(e) => { setQuery(e.target.value); setActive(0); }}
+            placeholder="Search by name, symbol or sector (e.g. Tata, bank, IT)"
             style={{
               flex: 1, background: "transparent", border: "none",
               outline: "none", color: "var(--color-text)", fontSize: "1rem", fontFamily: "inherit",
             }}
             onKeyDown={(e) => {
               if (e.key === "Escape") onClose();
+              if (e.key === "ArrowDown") { e.preventDefault(); setActive((i) => Math.min(i + 1, results.length - 1)); }
+              if (e.key === "ArrowUp") { e.preventDefault(); setActive((i) => Math.max(i - 1, 0)); }
               if (e.key === "Enter" && results.length > 0) {
-                router.push(`/market/${results[0].symbol}`);
+                router.push(`/market/${results[Math.min(active, results.length - 1)].symbol}`);
                 onClose();
               }
             }}
@@ -81,8 +90,8 @@ function SearchModal({ onClose }: { onClose: () => void }) {
                   Popular
                 </div>
               )}
-              {results.map((asset) => {
-                const quote = MOCK_QUOTES[asset.symbol];
+              {results.map((asset, idx) => {
+                const quote = quotes[asset.symbol];
                 return (
                   <Link
                     key={asset.symbol}
@@ -92,9 +101,9 @@ function SearchModal({ onClose }: { onClose: () => void }) {
                       display: "flex", alignItems: "center", gap: "0.75rem",
                       padding: "0.625rem 1rem", textDecoration: "none",
                       transition: "background var(--transition-fast)",
+                      background: idx === active ? "var(--color-bg-elevated)" : "transparent",
                     }}
-                    onMouseEnter={(e) => (e.currentTarget.style.background = "var(--color-bg-elevated)")}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                    onMouseEnter={() => setActive(idx)}
                   >
                     <div style={{
                       width: 36, height: 36, borderRadius: 8,
@@ -129,9 +138,9 @@ function SearchModal({ onClose }: { onClose: () => void }) {
                     <span style={{
                       fontSize: "0.6875rem", padding: "2px 6px", borderRadius: 4,
                       background: "var(--color-surface-2)", color: "var(--color-text-3)",
-                      textTransform: "capitalize", flexShrink: 0,
+                      flexShrink: 0,
                     }}>
-                      {asset.type}
+                      {asset.sector}
                     </span>
                   </Link>
                 );
@@ -145,7 +154,8 @@ function SearchModal({ onClose }: { onClose: () => void }) {
           padding: "0.5rem 1rem", borderTop: "1px solid var(--color-border)",
           display: "flex", gap: "1rem", fontSize: "0.6875rem", color: "var(--color-text-3)",
         }}>
-          <span><kbd style={{ background: "var(--color-surface-2)", borderRadius: 3, padding: "1px 4px" }}>↵</kbd> select</span>
+          <span><kbd style={{ background: "var(--color-surface-2)", borderRadius: 3, padding: "1px 4px" }}>↑↓</kbd> move</span>
+          <span><kbd style={{ background: "var(--color-surface-2)", borderRadius: 3, padding: "1px 4px" }}>↵</kbd> open</span>
           <span><kbd style={{ background: "var(--color-surface-2)", borderRadius: 3, padding: "1px 4px" }}>Esc</kbd> close</span>
         </div>
       </div>
@@ -154,14 +164,15 @@ function SearchModal({ onClose }: { onClose: () => void }) {
 }
 
 // ─── Ticker Strip ─────────────────────────────────────────────
-// Pulls live prices from MOCK_QUOTES so they always match the app data
+// Live prices from the backend (falls back to bundled quotes if the API is unreachable)
 
 function TickerStrip() {
+  const { quotes } = useLiveMarket();
   const symbols = ["SBIN","RELIANCE","HDFCBANK","ICICIBANK","INFY","TCS","ITC","LT","BHARTIARTL","ABCAPITAL"];
 
   const tickers = symbols
     .map((s) => {
-      const q = MOCK_QUOTES[s];
+      const q = quotes[s];
       if (!q) return null;
       return { symbol: s, price: q.price, change: q.changePercent };
     })
@@ -213,7 +224,32 @@ function TickerStrip() {
 export function TopBar() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [notifsOpen, setNotifsOpen] = useState(false);
-  const unread = MOCK_NOTIFICATIONS.filter((n) => !n.isRead).length;
+  const { marketOpen, status, lastUpdated, closedReason } = useLiveMarket();
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const [notifications, setNotifications] = useState<NotificationOut[]>([]);
+  const unread = notifications.filter((n) => !n.is_read).length;
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    let cancelled = false;
+    const load = () =>
+      apiGetNotifications()
+        .then((n) => { if (!cancelled) setNotifications(n); })
+        .catch(() => {});
+    load();
+    const id = setInterval(load, 30_000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [isAuthenticated]);
+
+  function markRead(id: string) {
+    setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, is_read: true } : n)));
+    apiMarkNotificationRead(id).catch(() => {});
+  }
+
+  function markAllRead() {
+    setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
+    apiMarkAllNotificationsRead().catch(() => {});
+  }
 
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
@@ -252,7 +288,7 @@ export function TopBar() {
           aria-label="Search stocks"
         >
           <Search size={14} />
-          <span>Search stocks, ETFs, crypto…</span>
+          <span>Search Nifty 50 stocks…</span>
           <span style={{
             marginLeft: "auto", background: "var(--color-surface-2)",
             borderRadius: 4, padding: "1px 5px",
@@ -266,8 +302,25 @@ export function TopBar() {
 
         {/* Market status */}
         <div style={{ display: "flex", alignItems: "center", gap: "0.375rem", fontSize: "0.75rem" }}>
-          <span style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--color-positive)", display: "inline-block" }} />
-          <span style={{ color: "var(--color-text-3)" }}>Market Open</span>
+          <span style={{
+            width: 7, height: 7, borderRadius: "50%", display: "inline-block",
+            background: marketOpen === false ? "var(--color-negative)" : marketOpen ? "var(--color-positive)" : "var(--color-text-3)",
+          }} />
+          <span style={{ color: "var(--color-text-3)" }}>
+            {marketOpen === null ? "Market" : marketOpen ? "Market Open" : closedReason === "holiday" ? "Market Closed (holiday)" : "Market Closed"}
+          </span>
+          <span
+            title="Prices come from Yahoo Finance and can be delayed by a few minutes"
+            style={{
+              marginLeft: 6, padding: "1px 7px", borderRadius: 999, fontSize: "0.6875rem", fontWeight: 600,
+              border: "1px solid var(--color-border)",
+              color: status === "live" ? "var(--color-positive)" : status === "offline" ? "var(--color-negative)" : "var(--color-text-3)",
+            }}
+          >
+            {status === "loading"
+              ? "Connecting…"
+              : `${status === "live" ? "Live" : "Offline, last update"} ${lastUpdated ? new Date(lastUpdated).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Kolkata" }) + " IST" : "none"}`}
+          </span>
         </div>
 
         {/* Notifications */}
@@ -309,22 +362,39 @@ export function TopBar() {
                 display: "flex", justifyContent: "space-between", alignItems: "center",
               }}>
                 <span style={{ fontWeight: 600, fontSize: "0.875rem" }}>Notifications</span>
-                <button onClick={() => setNotifsOpen(false)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-text-3)" }}>
-                  <X size={14} />
-                </button>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                  {unread > 0 && (
+                    <button onClick={markAllRead} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-brand)", fontSize: "0.75rem" }}>
+                      Mark all read
+                    </button>
+                  )}
+                  <button onClick={() => setNotifsOpen(false)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-text-3)" }}>
+                    <X size={14} />
+                  </button>
+                </div>
               </div>
-              {MOCK_NOTIFICATIONS.slice(0, 5).map((n) => (
-                <div key={n.id} style={{
-                  padding: "0.75rem 1rem",
-                  borderBottom: "1px solid var(--color-border-dim)",
-                  background: n.isRead ? "transparent" : "var(--color-brand-subtle)",
-                }}>
-                  <div style={{ fontSize: "0.8125rem", fontWeight: n.isRead ? 400 : 500, color: "var(--color-text)", marginBottom: 2 }}>
+              {notifications.length === 0 && (
+                <div style={{ padding: "1.5rem 1rem", textAlign: "center", fontSize: "0.8125rem", color: "var(--color-text-3)" }}>
+                  No notifications yet
+                </div>
+              )}
+              {notifications.slice(0, 5).map((n) => (
+                <div
+                  key={n.id}
+                  onClick={() => !n.is_read && markRead(n.id)}
+                  style={{
+                    padding: "0.75rem 1rem",
+                    borderBottom: "1px solid var(--color-border-dim)",
+                    background: n.is_read ? "transparent" : "var(--color-brand-subtle)",
+                    cursor: n.is_read ? "default" : "pointer",
+                  }}
+                >
+                  <div style={{ fontSize: "0.8125rem", fontWeight: n.is_read ? 400 : 500, color: "var(--color-text)", marginBottom: 2 }}>
                     {n.title}
                   </div>
                   <div style={{ fontSize: "0.75rem", color: "var(--color-text-3)" }}>{n.message}</div>
                   <div style={{ fontSize: "0.6875rem", color: "var(--color-text-3)", marginTop: 4 }}>
-                    {new Date(n.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    {new Date(n.created_at).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
                   </div>
                 </div>
               ))}

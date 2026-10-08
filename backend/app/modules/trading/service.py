@@ -48,7 +48,7 @@ class TradingEngine:
             if user.virtual_balance < required:
                 raise HTTPException(
                     status_code=400,
-                    detail=f"Insufficient virtual balance. Required: ${required:.2f}, Available: ${user.virtual_balance:.2f}",
+                    detail=f"Insufficient virtual balance. Required: ₹{required:,.2f}, Available: ₹{user.virtual_balance:,.2f}",
                 )
 
         # ---- Server-side position validation for sells ----

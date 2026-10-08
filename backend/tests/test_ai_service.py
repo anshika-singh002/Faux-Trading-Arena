@@ -66,9 +66,29 @@ async def test_explain_backtest():
     assert len(result_str) > 0
 
 
+def _seed_real_looking_candles(monkeypatch):
+    """Stand-in for the Yahoo Finance daily cache (the network is never used in tests)."""
+    import numpy as np
+    import pandas as pd
+    from app.modules.market_data import live
+
+    idx = pd.bdate_range("2025-01-01", periods=400)
+    rng = np.random.default_rng(7)
+    frames = {}
+    for sym, base in (("SBIN", 800.0), ("NIFTY", 22000.0), ("BANKNIFTY", 50000.0), ("INDIAVIX", 14.0)):
+        close = base * np.exp(np.cumsum(rng.normal(0, 0.01, len(idx))))
+        frames[sym] = pd.DataFrame(
+            {"open": close * 0.998, "high": close * 1.01, "low": close * 0.99,
+             "close": close, "volume": rng.integers(1_000_000, 5_000_000, len(idx)).astype(float)},
+            index=idx)
+    monkeypatch.setattr(live, "_daily", frames)
+    monkeypatch.setattr(live.settings, "LIVE_MARKET_DATA", True)
+
+
 @pytest.mark.asyncio
-async def test_xgboost_model2_prediction():
+async def test_xgboost_model2_prediction(monkeypatch):
     from app.modules.ai.ml_service import XGBoostAIService
+    _seed_real_looking_candles(monkeypatch)
     service = XGBoostAIService()
     result = await service.get_prediction("SBIN", 812.0)
     assert result.is_mock is False
@@ -78,6 +98,34 @@ async def test_xgboost_model2_prediction():
     assert 0 <= result.confidence_score <= 1.0
     assert any("Probabilities:" in kf for kf in result.key_factors)
     assert any("Recommendation:" in kf for kf in result.key_factors)
+
+
+@pytest.mark.asyncio
+async def test_xgboost_model2_is_flagged_mock_without_real_candles(monkeypatch):
+    """No market data yet: the service must say so instead of predicting from fake candles."""
+    from app.modules.ai.ml_service import XGBoostAIService
+    from app.modules.market_data import live
+    monkeypatch.setattr(live, "_daily", {})
+    result = await XGBoostAIService().get_prediction("SBIN", 812.0)
+    assert result.is_mock is True
+
+
+def test_model1_runs_live_on_real_candles(monkeypatch):
+    from app.modules.ai.ml_service import model1_service
+    _seed_real_looking_candles(monkeypatch)
+    result = model1_service.predict("SBIN", 812.0)
+    assert result.is_live is True
+    assert result.direction in ("UP", "DOWN", "NEUTRAL")
+    assert result.p_up + result.p_down == pytest.approx(1.0, abs=1e-3)
+
+
+def test_model1_falls_back_to_stored_predictions_without_candles(monkeypatch):
+    from app.modules.ai.ml_service import model1_service
+    from app.modules.market_data import live
+    monkeypatch.setattr(live, "_daily", {})
+    result = model1_service.predict("SBIN", 812.0)
+    assert result.is_live is False          # honest: these are stored test-set predictions
+    assert result.direction in ("UP", "DOWN", "NEUTRAL")
 
 
 @pytest.mark.asyncio

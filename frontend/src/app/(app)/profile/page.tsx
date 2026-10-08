@@ -1,31 +1,87 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { User, Shield, Bell, Award } from "lucide-react";
-import { MOCK_PORTFOLIO, MOCK_LEADERBOARD, formatCurrency, formatPercent } from "@/lib/mock-data";
+import { formatCurrency, formatPercent } from "@/lib/format";
 import { useAuthStore } from "@/lib/auth-store";
+import {
+  apiGetPortfolio, apiGetLeaderboard, apiListStrategies, apiUpdateDisplayName, apiResetPortfolio, apiChangePassword,
+  type PortfolioSummary, type LeaderboardRow,
+} from "@/lib/api";
 
 export default function ProfilePage() {
-  const { user, login } = useAuthStore();
-  const me = MOCK_LEADERBOARD.find((e) => e.isCurrentUser)!;
+  const { user, setDisplayName: storeSetDisplayName, updateBalance } = useAuthStore();
+  const [portfolio, setPortfolio] = useState<PortfolioSummary | null>(null);
+  const [me, setMe] = useState<LeaderboardRow | null>(null);
+  const [strategyCount, setStrategyCount] = useState(0);
+
+  useEffect(() => {
+    if (!user) return;
+    apiGetPortfolio().then(setPortfolio).catch(() => {});
+    apiGetLeaderboard().then((rows) => setMe(rows.find((r) => r.is_current_user) ?? null)).catch(() => {});
+    apiListStrategies().then((list) => setStrategyCount(list.length)).catch(() => {});
+  }, [user]);
 
   const [displayName, setDisplayName] = useState(user?.displayName ?? "");
-  const [username, setUsername]       = useState(user?.username ?? "");
-  const [email, setEmail]             = useState(user?.email ?? "");
   const [saved, setSaved]             = useState(false);
+  const [saveError, setSaveError]     = useState("");
+  const [currentPw, setCurrentPw] = useState("");
+  const [newPw, setNewPw]         = useState("");
+  const [pwBusy, setPwBusy]       = useState(false);
+  const [pwMsg, setPwMsg]         = useState<{ ok: boolean; text: string } | null>(null);
+  const username = user?.username ?? "";
+  const email = user?.email ?? "";
 
   const initials = displayName
     ? displayName.slice(0, 2).toUpperCase()
     : "FT";
 
-  function handleSave(e: React.FormEvent) {
-    e.preventDefault();
-    if (user) {
-      login({ ...user, displayName, username, email });
+  async function handlePassword(ev: React.FormEvent) {
+    ev.preventDefault();
+    setPwBusy(true);
+    setPwMsg(null);
+    try {
+      await apiChangePassword(currentPw, newPw);
+      setPwMsg({ ok: true, text: "Password updated." });
+      setCurrentPw("");
+      setNewPw("");
+    } catch (err) {
+      setPwMsg({ ok: false, text: err instanceof Error ? err.message : "Could not update the password" });
+    } finally {
+      setPwBusy(false);
     }
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
   }
+
+  async function handleSave(ev: React.FormEvent) {
+    ev.preventDefault();
+    setSaveError("");
+    try {
+      await apiUpdateDisplayName(displayName);
+      storeSetDisplayName(displayName);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Could not save changes");
+    }
+  }
+
+  async function handleReset() {
+    if (!window.confirm("Reset your virtual portfolio? All positions, orders and trades will be deleted. This cannot be undone.")) return;
+    try {
+      const r = await apiResetPortfolio();
+      updateBalance(r.virtual_balance);
+      setPortfolio(await apiGetPortfolio());
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "Could not reset the portfolio");
+    }
+  }
+
+  const achievements = [
+    { icon: "\ud83c\udfaf", name: "First Trade",  desc: "Placed your first trade", done: (me?.total_trades ?? 0) > 0 },
+    { icon: "\ud83d\udcb0", name: "First Profit", desc: "Realized a gain",         done: (me?.win_rate ?? 0) > 0 },
+    { icon: "\ud83d\udcca", name: "Strategist",   desc: "Created a strategy",      done: strategyCount > 0 },
+    { icon: "\ud83c\udfc6", name: "Top 10",       desc: "Reached the top 10",      done: !!me && me.rank <= 10 },
+  ];
 
   return (
     <div style={{ maxWidth: 800, margin: "0 auto" }}>
@@ -57,17 +113,17 @@ export default function ProfilePage() {
               <div>
                 <div style={{ fontSize: "0.6875rem", color: "var(--color-text-3)" }}>Rank</div>
                 <div style={{ fontWeight: 700, color: "var(--color-brand)" }}>
-                  {user?.rank ? `#${user.rank}` : "—"}
+                  {me ? `#${me.rank}` : "—"}
                 </div>
               </div>
               <div>
                 <div style={{ fontSize: "0.6875rem", color: "var(--color-text-3)" }}>Trades</div>
-                <div style={{ fontWeight: 700 }}>{me?.totalTrades ?? 0}</div>
+                <div style={{ fontWeight: 700 }}>{me?.total_trades ?? 0}</div>
               </div>
               <div>
                 <div style={{ fontSize: "0.6875rem", color: "var(--color-text-3)" }}>Win Rate</div>
                 <div style={{ fontWeight: 700, color: "var(--color-positive)" }}>
-                  {me?.winRate ?? 0}%
+                  {me?.win_rate ?? 0}%
                 </div>
               </div>
             </div>
@@ -79,10 +135,10 @@ export default function ProfilePage() {
               Performance
             </div>
             {[
-              { label: "Portfolio Value", value: formatCurrency(MOCK_PORTFOLIO.totalValue) },
-              { label: "Total Return",    value: formatPercent(MOCK_PORTFOLIO.totalReturnPercent), positive: true },
-              { label: "Sharpe Ratio",    value: me?.sharpeRatio.toFixed(2) ?? "—" },
-              { label: "Win Rate",        value: `${me?.winRate ?? 0}%`, positive: true },
+              { label: "Portfolio Value", value: portfolio ? formatCurrency(portfolio.total_value) : "—" },
+              { label: "Total Return",    value: portfolio ? formatPercent(portfolio.total_return_percent) : "—", positive: (portfolio?.total_return_percent ?? 0) > 0 },
+              { label: "Realized P&L",    value: portfolio ? formatCurrency(portfolio.realized_pnl) : "—", positive: (portfolio?.realized_pnl ?? 0) > 0 },
+              { label: "Win Rate",        value: `${me?.win_rate ?? 0}%`, positive: (me?.win_rate ?? 0) >= 50 },
             ].map(({ label, value, positive }) => (
               <div key={label} style={{ display: "flex", justifyContent: "space-between", padding: "0.4375rem 0", borderBottom: "1px solid var(--color-border-dim)" }}>
                 <span style={{ fontSize: "0.8125rem", color: "var(--color-text-3)" }}>{label}</span>
@@ -104,17 +160,12 @@ export default function ProfilePage() {
                 Achievements
               </span>
             </div>
-            {[
-              { icon: "🎯", name: "First Profit",  desc: "Realized first gain" },
-              { icon: "📊", name: "Strategist",    desc: "Created first strategy" },
-              { icon: "🔬", name: "Backtester",    desc: "Ran first backtest" },
-              { icon: "🏆", name: "Top 10",        desc: "Reached top 10" },
-            ].map((a) => (
-              <div key={a.name} style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.5rem" }}>
+            {achievements.map((a) => (
+              <div key={a.name} style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.5rem", opacity: a.done ? 1 : 0.4 }}>
                 <span style={{ fontSize: "1.125rem" }}>{a.icon}</span>
                 <div>
                   <div style={{ fontSize: "0.8125rem", fontWeight: 500, color: "var(--color-text)" }}>{a.name}</div>
-                  <div style={{ fontSize: "0.6875rem", color: "var(--color-text-3)" }}>{a.desc}</div>
+                  <div style={{ fontSize: "0.6875rem", color: "var(--color-text-3)" }}>{a.desc}{a.done ? " \u2713" : ""}</div>
                 </div>
               </div>
             ))}
@@ -146,7 +197,8 @@ export default function ProfilePage() {
                 <input
                   className="input-base"
                   value={username}
-                  onChange={(e) => setUsername(e.target.value)}
+                  readOnly
+                  disabled
                   placeholder="username"
                 />
               </div>
@@ -158,7 +210,8 @@ export default function ProfilePage() {
                   className="input-base"
                   type="email"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  readOnly
+                  disabled
                   placeholder="you@example.com"
                 />
               </div>
@@ -169,75 +222,43 @@ export default function ProfilePage() {
               >
                 {saved ? "✓ Saved" : "Save Changes"}
               </button>
+              {saveError && <div style={{ fontSize: "0.75rem", color: "var(--color-negative)" }}>{saveError}</div>}
             </form>
           </div>
 
           <div className="surface" style={{ borderRadius: "var(--radius-lg)", padding: "1.25rem" }}>
             <h3 style={{ fontSize: "0.875rem", marginBottom: "1rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
-              <Bell size={15} style={{ color: "var(--color-text-3)" }} /> Notifications
+              <Bell size={15} style={{ color: "var(--color-text-3)" }} /> Alerts you get
             </h3>
-            {[
-              { label: "Order fills",       desc: "Get notified when orders are executed",  on: true  },
-              { label: "Price alerts",      desc: "Alerts for stocks in your watchlist",    on: true  },
-              { label: "AI insights",       desc: "New analysis from the AI engine",        on: false },
-              { label: "Portfolio digest",  desc: "Daily portfolio summary",                on: false },
-            ].map(({ label, desc, on }, i) => (
-              <div
-                key={label}
-                style={{
-                  display: "flex", alignItems: "center", justifyContent: "space-between",
-                  padding: "0.625rem 0",
-                  borderBottom: i < 3 ? "1px solid var(--color-border-dim)" : "none",
-                }}
-              >
-                <div>
-                  <div style={{ fontSize: "0.875rem", fontWeight: 500, color: "var(--color-text)" }}>{label}</div>
-                  <div style={{ fontSize: "0.75rem", color: "var(--color-text-3)" }}>{desc}</div>
-                </div>
-                <div
-                  role="switch"
-                  aria-checked={on}
-                  tabIndex={0}
-                  style={{
-                    width: 36, height: 20, borderRadius: 10,
-                    background: on ? "var(--color-positive)" : "var(--color-border)",
-                    cursor: "pointer", position: "relative",
-                    transition: "background var(--transition-fast)", flexShrink: 0,
-                  }}
-                >
-                  <div style={{
-                    position: "absolute", top: 2,
-                    left: on ? "calc(100% - 18px)" : 2,
-                    width: 16, height: 16, borderRadius: "50%",
-                    background: "white",
-                    transition: "left var(--transition-fast)",
-                  }} />
-                </div>
-              </div>
-            ))}
+            <ul style={{ margin: 0, paddingLeft: "1.1rem", display: "grid", gap: "0.5rem", fontSize: "0.8125rem", color: "var(--color-text-2)", lineHeight: 1.5 }}>
+              <li><strong>Bell icon:</strong> order fills, and limit orders that were cancelled.</li>
+              <li><strong>Before a buy:</strong> a warning if the stock&apos;s real price history says it may lose money.</li>
+              <li><strong>Portfolio page:</strong> an alert for holdings whose gains may reverse or whose trend is falling.</li>
+            </ul>
           </div>
 
           <div className="surface" style={{ borderRadius: "var(--radius-lg)", padding: "1.25rem" }}>
             <h3 style={{ fontSize: "0.875rem", marginBottom: "1rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
               <Shield size={15} style={{ color: "var(--color-text-3)" }} /> Security
             </h3>
-            <div style={{ display: "flex", flexDirection: "column", gap: "0.875rem" }}>
+            <form onSubmit={handlePassword} style={{ display: "flex", flexDirection: "column", gap: "0.875rem" }}>
               <div>
                 <label style={{ fontSize: "0.75rem", color: "var(--color-text-3)", display: "block", marginBottom: 6 }}>
                   Current Password
                 </label>
-                <input className="input-base" type="password" placeholder="••••••••" />
+                <input className="input-base" type="password" value={currentPw} onChange={(e) => setCurrentPw(e.target.value)} autoComplete="current-password" required />
               </div>
               <div>
                 <label style={{ fontSize: "0.75rem", color: "var(--color-text-3)", display: "block", marginBottom: 6 }}>
-                  New Password
+                  New Password (8+ characters)
                 </label>
-                <input className="input-base" type="password" placeholder="••••••••" />
+                <input className="input-base" type="password" value={newPw} onChange={(e) => setNewPw(e.target.value)} autoComplete="new-password" minLength={8} required />
               </div>
-              <button className="btn btn-ghost btn-sm" style={{ alignSelf: "flex-start" }}>
-                Update Password
+              <button type="submit" disabled={pwBusy} className="btn btn-ghost btn-sm" style={{ alignSelf: "flex-start" }}>
+                {pwBusy ? "Updating…" : "Update Password"}
               </button>
-            </div>
+              {pwMsg && <div style={{ fontSize: "0.75rem", color: pwMsg.ok ? "var(--color-positive)" : "var(--color-negative)" }}>{pwMsg.text}</div>}
+            </form>
           </div>
 
           <div
@@ -248,9 +269,10 @@ export default function ProfilePage() {
               Danger Zone
             </h3>
             <p style={{ fontSize: "0.8125rem", color: "var(--color-text-3)", marginBottom: "1rem" }}>
-              Reset your virtual portfolio to ₹84,00,000. This cannot be undone.
+              Reset your virtual portfolio to the starting balance. All positions, orders and trades are deleted. This cannot be undone.
             </p>
             <button
+              onClick={handleReset}
               style={{
                 background: "var(--color-negative-dim)",
                 border: "1px solid var(--color-negative)",

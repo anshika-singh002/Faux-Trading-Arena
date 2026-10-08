@@ -10,7 +10,7 @@ import {
 import {
   PieChart, Pie, Cell, Tooltip, ResponsiveContainer,
 } from "recharts";
-import { formatCurrency, formatPercent } from "@/lib/mock-data";
+import { formatCurrency, formatPercent } from "@/lib/format";
 import { useAuthStore } from "@/lib/auth-store";
 import {
   apiGetAdvisorProfiles,
