@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Search, TrendingUp, TrendingDown, Flame, Eye } from "lucide-react";
+import { Search, Eye, TrendingUp, TrendingDown } from "lucide-react";
 import {
   MOCK_ASSETS, MOCK_QUOTES, MOCK_INDICES, MOCK_WATCHLIST,
   formatCurrency, formatVolume,
@@ -11,71 +11,10 @@ import {
 type SectorFilter = "All" | "Financial" | "Technology" | "Energy" | "Industrials" | "Consumer Staples" | "Communication";
 const SECTORS: SectorFilter[] = ["All", "Financial", "Technology", "Energy", "Industrials", "Consumer Staples", "Communication"];
 
-// ─── Build gainers/losers dynamically from MOCK_QUOTES ───────────────────────
-// Only shows stocks that are actually positive as gainers, actually negative as losers.
-// Change display uses proper − sign (not +-).
-
 function formatChange(pct: number): string {
   if (pct > 0) return `+${pct.toFixed(2)}%`;
-  return `${pct.toFixed(2)}%`; // toFixed already includes the − for negatives
+  return `${pct.toFixed(2)}%`;
 }
-
-const ALL_MOVERS = MOCK_ASSETS.map((a) => {
-  const q = MOCK_QUOTES[a.symbol];
-  if (!q) return null;
-  return { symbol: a.symbol, name: a.name, price: q.price, changePercent: q.changePercent };
-}).filter(Boolean) as { symbol: string; name: string; price: number; changePercent: number }[];
-
-const GAINERS = ALL_MOVERS
-  .filter(m => m.changePercent > 0)
-  .sort((a, b) => b.changePercent - a.changePercent);
-
-const LOSERS = ALL_MOVERS
-  .filter(m => m.changePercent < 0)
-  .sort((a, b) => a.changePercent - b.changePercent); // most negative first
-
-// ─── Mover row component ──────────────────────────────────────────────────────
-
-function MoverRow({ symbol, name, price, changePercent, isGainer }: {
-  symbol: string; name: string; price: number; changePercent: number; isGainer: boolean;
-}) {
-  const color = isGainer ? "var(--color-positive)" : "var(--color-negative)";
-  return (
-    <Link
-      href={`/market/${symbol}`}
-      style={{
-        display: "flex", alignItems: "center", justifyContent: "space-between",
-        padding: "0.5rem 0", borderBottom: "1px solid var(--color-border-dim)",
-        textDecoration: "none",
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-        <div style={{
-          width: 28, height: 28, borderRadius: 6,
-          background: "var(--color-surface-2)",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          fontSize: "0.5625rem", fontWeight: 700, color, flexShrink: 0,
-        }}>
-          {symbol.slice(0, 2)}
-        </div>
-        <div>
-          <div style={{ fontSize: "0.8125rem", fontWeight: 600, color: "var(--color-text)" }}>{symbol}</div>
-          <div style={{ fontSize: "0.6875rem", color: "var(--color-text-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 100 }}>{name}</div>
-        </div>
-      </div>
-      <div style={{ textAlign: "right" }}>
-        <div style={{ fontSize: "0.8125rem", fontFamily: "var(--font-mono)", fontWeight: 600, color: "var(--color-text)" }}>
-          {formatCurrency(price)}
-        </div>
-        <div style={{ fontSize: "0.75rem", fontFamily: "var(--font-mono)", color }}>
-          {formatChange(changePercent)}
-        </div>
-      </div>
-    </Link>
-  );
-}
-
-// ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function MarketPage() {
   const [search, setSearch] = useState("");
@@ -90,15 +29,24 @@ export default function MarketPage() {
     return matchesSearch && matchesSector;
   });
 
+  // Quick summary counts
+  const gainers = MOCK_ASSETS.filter(a => (MOCK_QUOTES[a.symbol]?.changePercent ?? 0) > 0).length;
+  const losers  = MOCK_ASSETS.filter(a => (MOCK_QUOTES[a.symbol]?.changePercent ?? 0) < 0).length;
+
   return (
     <div style={{ maxWidth: 1200, margin: "0 auto" }}>
-      <h1 style={{ fontSize: "1.25rem", marginBottom: "0.375rem" }}>Market</h1>
-      <p style={{ fontSize: "0.8125rem", color: "var(--color-text-3)", marginBottom: "1.5rem" }}>
-        Indian stocks — NSE · Prices as of Oct 7, 2026
-      </p>
+      <div style={{ marginBottom: "1.5rem" }}>
+        <h1 style={{ fontSize: "1.5rem", fontWeight: 700, marginBottom: "0.25rem" }}>Market</h1>
+        <p style={{ fontSize: "0.875rem", color: "var(--color-text-3)", margin: 0 }}>
+          NSE Indian stocks · Oct 7, 2026 ·{" "}
+          <span style={{ color: "var(--color-positive)", fontWeight: 600 }}>{gainers} up</span>
+          {" / "}
+          <span style={{ color: "var(--color-negative)", fontWeight: 600 }}>{losers} down</span>
+        </p>
+      </div>
 
       {/* Index cards */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: "0.75rem", marginBottom: "1.5rem" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: "0.75rem", marginBottom: "1.75rem" }}>
         {MOCK_INDICES.map((idx) => (
           <div key={idx.symbol} className="surface" style={{ borderRadius: "var(--radius-lg)", padding: "0.75rem 1rem" }}>
             <div style={{ fontSize: "0.6875rem", color: "var(--color-text-3)", marginBottom: 2 }}>{idx.name}</div>
@@ -112,52 +60,10 @@ export default function MarketPage() {
         ))}
       </div>
 
-      {/* Gainers / Losers — dynamic, derived from actual quotes */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem", marginBottom: "1.5rem" }}>
+      {/* Single stock table — all 10 mixed, sorted by absolute change */}
+      <div className="surface" style={{ borderRadius: "var(--radius-xl)", overflow: "hidden" }}>
 
-        {/* Gainers */}
-        <div className="surface" style={{ borderRadius: "var(--radius-lg)", padding: "1rem 1.25rem" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "0.375rem", marginBottom: "0.75rem" }}>
-            <Flame size={15} style={{ color: "var(--color-positive)" }} />
-            <span style={{ fontSize: "0.875rem", fontWeight: 600 }}>Top Gainers</span>
-            <span style={{ marginLeft: "auto", fontSize: "0.6875rem", color: "var(--color-text-3)" }}>
-              {GAINERS.length} stock{GAINERS.length !== 1 ? "s" : ""} up today
-            </span>
-          </div>
-          {GAINERS.length === 0 ? (
-            <div style={{ padding: "1rem 0", textAlign: "center", color: "var(--color-text-3)", fontSize: "0.8125rem" }}>
-              No stocks are up today
-            </div>
-          ) : (
-            GAINERS.map(m => (
-              <MoverRow key={m.symbol} {...m} isGainer={true} />
-            ))
-          )}
-        </div>
-
-        {/* Losers */}
-        <div className="surface" style={{ borderRadius: "var(--radius-lg)", padding: "1rem 1.25rem" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "0.375rem", marginBottom: "0.75rem" }}>
-            <TrendingDown size={15} style={{ color: "var(--color-negative)" }} />
-            <span style={{ fontSize: "0.875rem", fontWeight: 600 }}>Top Losers</span>
-            <span style={{ marginLeft: "auto", fontSize: "0.6875rem", color: "var(--color-text-3)" }}>
-              {LOSERS.length} stock{LOSERS.length !== 1 ? "s" : ""} down today
-            </span>
-          </div>
-          {LOSERS.length === 0 ? (
-            <div style={{ padding: "1rem 0", textAlign: "center", color: "var(--color-text-3)", fontSize: "0.8125rem" }}>
-              No stocks are down today
-            </div>
-          ) : (
-            LOSERS.map(m => (
-              <MoverRow key={m.symbol} {...m} isGainer={false} />
-            ))
-          )}
-        </div>
-      </div>
-
-      {/* Search & filter table */}
-      <div className="surface" style={{ borderRadius: "var(--radius-lg)", overflow: "hidden" }}>
+        {/* Search + sector filter */}
         <div style={{ padding: "1rem 1.25rem", borderBottom: "1px solid var(--color-border)", display: "flex", alignItems: "center", gap: "1rem", flexWrap: "wrap" }}>
           <div style={{ position: "relative", flex: 1, minWidth: 200 }}>
             <Search size={14} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "var(--color-text-3)" }} />
@@ -165,42 +71,39 @@ export default function MarketPage() {
               className="input-base"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search symbol or name…"
+              placeholder="Search symbol or company…"
               style={{ paddingLeft: 32 }}
             />
           </div>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
             {SECTORS.map((s) => (
-              <button
-                key={s}
-                onClick={() => setSector(s)}
-                style={{
-                  padding: "4px 12px", borderRadius: "var(--radius-full)", border: "1px solid",
-                  borderColor: sector === s ? "var(--color-brand)" : "var(--color-border)",
-                  background: sector === s ? "var(--color-brand-muted)" : "transparent",
-                  color: sector === s ? "var(--color-brand)" : "var(--color-text-3)",
-                  fontSize: "0.75rem", fontWeight: sector === s ? 600 : 400,
-                  cursor: "pointer", transition: "all var(--transition-fast)", whiteSpace: "nowrap",
-                }}
-              >
+              <button key={s} onClick={() => setSector(s)} style={{
+                padding: "4px 12px", borderRadius: "var(--radius-full)", border: "1px solid",
+                borderColor: sector === s ? "var(--color-brand)" : "var(--color-border)",
+                background: sector === s ? "var(--color-brand-muted)" : "transparent",
+                color: sector === s ? "var(--color-brand)" : "var(--color-text-3)",
+                fontSize: "0.75rem", fontWeight: sector === s ? 600 : 400,
+                cursor: "pointer", whiteSpace: "nowrap", fontFamily: "inherit",
+              }}>
                 {s}
               </button>
             ))}
           </div>
         </div>
 
+        {/* Table */}
         <div style={{ overflowX: "auto" }}>
           <table className="data-table">
             <thead>
               <tr>
                 <th>#</th>
-                <th>Asset</th>
+                <th>Stock</th>
                 <th style={{ textAlign: "right" }}>Price</th>
-                <th style={{ textAlign: "right" }}>Day Change</th>
+                <th style={{ textAlign: "right" }}>Today</th>
                 <th style={{ textAlign: "right" }}>Volume</th>
                 <th style={{ textAlign: "right" }}>Market Cap</th>
                 <th style={{ textAlign: "center" }}>52W Range</th>
-                <th style={{ textAlign: "center" }}>Watch</th>
+                <th style={{ textAlign: "center" }}>Action</th>
               </tr>
             </thead>
             <tbody>
@@ -208,33 +111,49 @@ export default function MarketPage() {
                 const q = MOCK_QUOTES[asset.symbol];
                 if (!q) return null;
                 const isWatched = watchlistSymbols.has(asset.symbol);
+                const isUp = q.changePercent >= 0;
                 const range52 = q.week52High && q.week52Low
                   ? ((q.price - q.week52Low) / (q.week52High - q.week52Low)) * 100
                   : 50;
-                const isUp = q.changePercent >= 0;
 
                 return (
                   <tr key={asset.symbol}>
                     <td style={{ color: "var(--color-text-3)", fontSize: "0.75rem", width: 32 }}>{i + 1}</td>
                     <td>
                       <Link href={`/market/${asset.symbol}`} style={{ display: "flex", alignItems: "center", gap: "0.625rem", textDecoration: "none" }}>
-                        <div style={{ width: 32, height: 32, borderRadius: 8, background: "var(--color-surface-2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.6875rem", fontWeight: 700, color: "var(--color-brand)", flexShrink: 0 }}>
+                        {/* Coloured avatar — green border if up, red if down */}
+                        <div style={{
+                          width: 34, height: 34, borderRadius: 8,
+                          background: isUp ? "var(--color-positive-dim)" : "var(--color-negative-dim)",
+                          border: `1px solid ${isUp ? "var(--color-positive)" : "var(--color-negative)"}`,
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          fontSize: "0.5625rem", fontWeight: 800,
+                          color: isUp ? "var(--color-positive)" : "var(--color-negative)",
+                          flexShrink: 0,
+                        }}>
                           {asset.symbol.slice(0, 2)}
                         </div>
                         <div>
-                          <div style={{ fontWeight: 600, color: "var(--color-text)", fontSize: "0.875rem" }}>{asset.symbol}</div>
+                          <div style={{ fontWeight: 600, color: "var(--color-text)", fontSize: "0.875rem", display: "flex", alignItems: "center", gap: 5 }}>
+                            {asset.symbol}
+                            {/* Small up/down arrow next to name */}
+                            {isUp
+                              ? <TrendingUp size={11} style={{ color: "var(--color-positive)" }} />
+                              : <TrendingDown size={11} style={{ color: "var(--color-negative)" }} />
+                            }
+                          </div>
                           <div style={{ fontSize: "0.6875rem", color: "var(--color-text-3)" }}>{asset.name}</div>
                         </div>
                       </Link>
                     </td>
-                    <td style={{ textAlign: "right", fontFamily: "var(--font-mono)", fontWeight: 600, color: "var(--color-text)" }}>
+                    <td style={{ textAlign: "right", fontFamily: "var(--font-mono)", fontWeight: 700, color: "var(--color-text)" }}>
                       {formatCurrency(q.price)}
                     </td>
                     <td style={{ textAlign: "right" }}>
-                      <div style={{ color: isUp ? "var(--color-positive)" : "var(--color-negative)", fontFamily: "var(--font-mono)", fontSize: "0.8125rem", fontWeight: 500 }}>
+                      <div style={{ fontFamily: "var(--font-mono)", fontSize: "0.875rem", fontWeight: 600, color: isUp ? "var(--color-positive)" : "var(--color-negative)" }}>
                         {formatChange(q.changePercent)}
                       </div>
-                      <div style={{ fontSize: "0.6875rem", color: isUp ? "var(--color-positive)" : "var(--color-negative)", fontFamily: "var(--font-mono)" }}>
+                      <div style={{ fontSize: "0.6875rem", fontFamily: "var(--font-mono)", color: isUp ? "var(--color-positive)" : "var(--color-negative)" }}>
                         {q.change > 0 ? "+" : ""}{q.change.toFixed(2)}
                       </div>
                     </td>
@@ -251,13 +170,10 @@ export default function MarketPage() {
                             <div style={{ position: "absolute", left: 0, right: 0, height: 4, borderRadius: 2, background: "var(--color-border)" }} />
                             <div style={{ position: "absolute", left: 0, height: 4, borderRadius: 2, width: `${range52}%`, background: "var(--color-brand)", opacity: 0.35 }} />
                             <div style={{
-                              position: "absolute",
-                              left: `${Math.min(92, Math.max(4, range52))}%`,
+                              position: "absolute", left: `${Math.min(92, Math.max(4, range52))}%`,
                               width: 10, height: 10, borderRadius: "50%",
-                              background: "var(--color-brand)",
-                              border: "2px solid var(--color-bg-elevated)",
-                              transform: "translateX(-50%)",
-                              boxShadow: "0 0 0 1px var(--color-brand)",
+                              background: "var(--color-brand)", border: "2px solid var(--color-bg-elevated)",
+                              transform: "translateX(-50%)", boxShadow: "0 0 0 1px var(--color-brand)",
                             }} />
                           </div>
                           <div style={{ fontSize: "0.5625rem", color: "var(--color-text-3)", fontFamily: "var(--font-mono)" }}>
@@ -267,13 +183,24 @@ export default function MarketPage() {
                       ) : "—"}
                     </td>
                     <td style={{ textAlign: "center" }}>
-                      <button
-                        style={{ background: "none", border: "none", cursor: "pointer", color: isWatched ? "var(--color-brand)" : "var(--color-text-3)", padding: 4 }}
-                        title={isWatched ? "In watchlist" : "Add to watchlist"}
-                        aria-label={isWatched ? "In watchlist" : "Add to watchlist"}
-                      >
-                        <Eye size={15} fill={isWatched ? "var(--color-brand)" : "none"} />
-                      </button>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                        <button
+                          style={{ background: "none", border: "none", cursor: "pointer", color: isWatched ? "var(--color-brand)" : "var(--color-text-3)", padding: 4 }}
+                          title="Watchlist" aria-label="Toggle watchlist"
+                        >
+                          <Eye size={14} fill={isWatched ? "var(--color-brand)" : "none"} />
+                        </button>
+                        <Link href={`/market/${asset.symbol}`} style={{
+                          fontSize: "0.75rem", fontWeight: 600,
+                          padding: "3px 10px", borderRadius: "var(--radius-md)",
+                          background: isUp ? "var(--color-positive-dim)" : "var(--color-surface-2)",
+                          color: isUp ? "var(--color-positive)" : "var(--color-text-2)",
+                          border: `1px solid ${isUp ? "var(--color-positive)" : "var(--color-border)"}`,
+                          textDecoration: "none",
+                        }}>
+                          Trade
+                        </Link>
+                      </div>
                     </td>
                   </tr>
                 );
